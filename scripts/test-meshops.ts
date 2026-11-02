@@ -11,6 +11,13 @@ import {
 import * as ops from '../src/core/meshops';
 import { bevelMesh } from '../src/core/bevel';
 import { primMonkey } from '../src/core/monkey';
+import { knifeApply } from '../src/core/knife';
+import {
+  bisectMesh, edgeSplitSelected, ripSelected, rotateEdges, fillLoops, bridgeEdgeLoops, gridFill, connectVertexPath,
+  unsubdivide, symmetrize, snapToSymmetry, edgeChains,
+} from '../src/core/meshtools';
+const normalize3 = (v: Vec3): Vec3 => { const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l]; };
+const polyCenterY = (m: MeshData, fi: number) => m.faces[fi].reduce((s, v) => s + m.verts[v][1], 0) / m.faces[fi].length;
 
 // ------------------------------------------------------------------ harness
 
@@ -1175,6 +1182,161 @@ test('primMonkey: ~500 verts, quads, closed, mirror symmetric', () => {
   for (const p of m.verts) for (let k = 0; k < 3; k++) { b.min[k] = Math.min(b.min[k], p[k]); b.max[k] = Math.max(b.max[k], p[k]); }
   assert(b.max[0] > 1.1 && b.max[0] < 1.5, `ear span ${b.max[0]}`);
   assert(b.min[1] < -0.8, `face points -Y (${b.min[1]})`);
+});
+
+// ------------------------------------------------------------------ knife / bisect / edge tools
+
+console.log('knife / bisect / tools');
+test('knifeApply splits a cube face between two edge points', () => {
+  const m = cube();
+  const f = m.faces.findIndex((x) => x.includes(1) && x.includes(2) && x.includes(5) && x.includes(6)); // -Y face
+  const a = { id: 'a', kind: 'EDGE' as const, e: [1, 5] as [number, number], t: 0.5, co: [1, -1, 0] as Vec3 };
+  const b = { id: 'b', kind: 'EDGE' as const, e: [2, 6] as [number, number], t: 0.25, co: [-1, -1, -0.5] as Vec3 };
+  const r = knifeApply(m, [{ face: f, a, b }]);
+  eq(r.newEdges.length, 1, 'cut edges');
+  eq(m.verts.length, 10, 'verts');
+  eq(m.faces.length, 7, 'faces');
+  checkInvariants(m, true);
+});
+test('knifeApply with an interior point chain', () => {
+  const m = plane();
+  const a = { id: 'a', kind: 'EDGE' as const, e: [0, 1] as [number, number], t: 0.5, co: [0, -1, 0] as Vec3 };
+  const c = { id: 'c', kind: 'FACE' as const, co: [0.2, 0, 0] as Vec3 };
+  const b = { id: 'b', kind: 'EDGE' as const, e: [2, 3] as [number, number], t: 0.5, co: [0, 1, 0] as Vec3 };
+  knifeApply(m, [{ face: 0, a, b: c }, { face: 0, a: c, b }]);
+  eq(m.faces.length, 2, 'faces');
+  eq(m.verts.length, 7, 'verts');
+  checkInvariants(m);
+});
+test('bisect cube: cut, clear outer + fill gives a closed box', () => {
+  const m = cube();
+  selectAll(m);
+  assert(bisectMesh(m, [0, 0, 0.3], [0, 0, 1]), 'cut');
+  eq(m.verts.length, 12, 'verts');
+  eq(m.faces.length, 10, 'faces');
+  checkInvariants(m, true);
+  const m2 = cube();
+  selectAll(m2);
+  bisectMesh(m2, [0, 0, 0.3], [0, 0, 1], { clearOuter: true, fill: true });
+  checkInvariants(m2, true);
+  near(volume(m2), 4 * 1.3, 'volume');
+  const m3 = cube();
+  selectAll(m3);
+  bisectMesh(m3, [0.1, 0, 0], normalize3([1, 1, 0.5]), { clearInner: true, fill: true });
+  checkInvariants(m3, true);
+});
+test('edge split and rip', () => {
+  const m = grid(4, 4);
+  selectEdges(m, [[4, 5], [5, 6], [6, 7]]);
+  eq(edgeSplitSelected(m), 4, 'new verts');
+  checkInvariants(m);
+  const g = grid(4, 4);
+  selectEdges(g, [[5, 6]]);
+  const res = ripSelected(g, (fi) => polyCenterY(g, fi));
+  assert(res.ok, 'rip edge');
+  checkInvariants(g);
+  eq(count(g.vsel), 2, 'selected copies');
+  const g2 = grid(4, 4);
+  selectEdges(g2, [[5, 6]]);
+  ripSelected(g2, (fi) => polyCenterY(g2, fi), true);
+  checkInvariants(g2);
+  const v = grid(4, 4);
+  selectVerts(v, [5]);
+  assert(ripSelected(v, (fi) => polyCenterY(v, fi)).ok, 'rip vertex');
+  eq(v.verts.length, 17, 'vertex copy');
+  checkInvariants(v);
+});
+test('rotate edge flips a quad diagonal', () => {
+  const m = mk({ verts: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], faces: [[0, 1, 2], [0, 2, 3]] });
+  selectEdges(m, [[0, 2]]);
+  eq(rotateEdges(m, false), 1, 'rotated');
+  assert(m.edges.some(([a, b]) => edgeKey(a, b) === edgeKey(1, 3)), 'new diagonal');
+  checkInvariants(m);
+  assert(m.faces.every((f) => polyNormal(m.verts, f)[2] > 0.99), 'orientation kept');
+});
+test('fill and beautify', () => {
+  const c = mk(primCylinder(8));
+  // drop the top cap and fill the hole again
+  const top = c.faces.findIndex((f) => f.length === 8 && c.verts[f[0]][2] > 0);
+  selectFaces(c, [top]);
+  ops.deleteElements(c, 'ONLY_FACE');
+  const ring = c.verts.map((p, i) => (p[2] > 0 ? i : -1)).filter((i) => i >= 0);
+  selectVerts(c, ring);
+  eq(fillLoops(c), 6, 'triangles');
+  checkInvariants(c, true);
+});
+test('bridge two loops (cylinder without caps)', () => {
+  const ring = (z: number, off: number) => Array.from({ length: 8 }, (_, i) => [Math.cos(i / 8 * Math.PI * 2), Math.sin(i / 8 * Math.PI * 2), z] as Vec3).map((p, i, a) => a[(i + off) % 8]);
+  const verts = [...ring(0, 0), ...ring(1, 3)];
+  const edges: [number, number][] = [];
+  for (let i = 0; i < 8; i++) { edges.push([i, (i + 1) % 8]); edges.push([8 + i, 8 + (i + 1) % 8]); }
+  const m = mk({ verts, faces: [], edges });
+  selectAll(m);
+  eq(bridgeEdgeLoops(m), null, 'no error');
+  eq(m.faces.length, 8, 'faces');
+  assert(m.faces.every((f) => f.length === 4), 'quads');
+  checkInvariants(m);
+  // straight walls (no twist)
+  for (const f of m.faces) assert(f.every((v) => Math.abs(m.verts[v][0] - m.verts[f[0]][0]) < 1.0), 'untwisted');
+  const box = cube();
+  selectFaces(box, [0, 1]);
+  eq(bridgeEdgeLoops(box), null, 'bridge two faces');
+  checkInvariants(box);
+});
+test('grid fill', () => {
+  const c = mk(primCylinder(12));
+  const top = c.faces.findIndex((f) => f.length === 12 && c.verts[f[0]][2] > 0);
+  selectFaces(c, [top]);
+  ops.deleteElements(c, 'ONLY_FACE');
+  selectVerts(c, c.verts.map((p, i) => (p[2] > 0 ? i : -1)).filter((i) => i >= 0));
+  eq(gridFill(c, 3, 0), null, 'no error');
+  eq(c.faces.length, 12 + 1 + 9, 'faces');
+  checkInvariants(c, true);
+});
+test('connect vertex path', () => {
+  const m = cube();
+  selectVerts(m, [0, 2]);
+  eq(connectVertexPath(m), 1, 'edges');
+  eq(m.faces.length, 7, 'faces');
+  checkInvariants(m, true);
+});
+test('unsubdivide grid and subdivided cube', () => {
+  const g = grid(5, 5);
+  selectAll(g);
+  eq(unsubdivide(g, 1), null, 'ok');
+  eq(g.faces.length, 4, 'faces');
+  checkInvariants(g);
+  const c = cube();
+  selectAll(c);
+  ops.subdivide(c, 1);
+  eq(c.faces.length, 24, 'subdivided');
+  selectAll(c);
+  eq(unsubdivide(c, 1), null, 'ok');
+  eq(c.faces.length, 6, 'faces back');
+  eq(c.verts.length, 8, 'verts back');
+  checkInvariants(c, true);
+});
+test('symmetrize and snap to symmetry', () => {
+  const g = grid(5, 5);
+  g.verts[0][2] = 0.5;
+  selectAll(g);
+  symmetrize(g, 'NEGATIVE_X');
+  checkInvariants(g);
+  eq(g.verts.length, 25, 'verts');
+  assert(g.verts.some((p) => Math.abs(p[0] - 1) < 1e-9 && Math.abs(p[2] - 0.5) < 1e-9), 'mirrored bump');
+  const h = grid(5, 5);
+  h.verts[0][0] -= 0.02;
+  selectAll(h);
+  snapToSymmetry(h, 'NEGATIVE_X', 0.05, 0.5);
+  const key = (p: Vec3) => p.map((x) => Math.round(x * 1e6)).join(',');
+  const set = new Set(h.verts.map(key));
+  for (const p of h.verts) assert(set.has(key([-p[0], p[1], p[2]])), 'symmetric');
+});
+test('edge chains', () => {
+  const ch = edgeChains([[0, 1], [1, 2], [2, 0], [5, 6], [6, 7]]);
+  eq(ch.length, 2, 'chains');
+  assert(ch.some((c) => c.closed && c.verts.length === 3), 'closed');
+  assert(ch.some((c) => !c.closed && c.verts.length === 3), 'open');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

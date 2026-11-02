@@ -64,43 +64,37 @@ function orientLoop(md: MeshData, loop: number[], ef: Map<string, number[]>): nu
   return score > 0 ? loop.slice().reverse() : loop;
 }
 
-/** Chains (open or closed) formed by a set of edges. */
+/** Chains (open or closed) formed by a set of edges. Branching verts end chains. */
 export function edgeChains(edges: [number, number][]): { verts: number[]; closed: boolean }[] {
   const adj = new Map<number, number[]>();
   for (const [a, b] of edges) {
+    if (a === b) continue;
     if (!adj.has(a)) adj.set(a, []);
     if (!adj.has(b)) adj.set(b, []);
-    adj.get(a)!.push(b); adj.get(b)!.push(a);
+    if (!adj.get(a)!.includes(b)) adj.get(a)!.push(b);
+    if (!adj.get(b)!.includes(a)) adj.get(b)!.push(a);
   }
   const used = new Set<string>();
   const out: { verts: number[]; closed: boolean }[] = [];
-  const walk = (start: number) => {
+  const walk = (start: number, first: number): { verts: number[]; closed: boolean } => {
     const verts = [start];
-    let cur = start;
+    let prev = start, cur = first;
+    used.add(edgeKey(start, first));
     for (;;) {
-      const nx = (adj.get(cur) ?? []).find((n) => !used.has(edgeKey(cur, n)));
-      if (nx === undefined) break;
+      if (cur === start) return { verts, closed: true };
+      verts.push(cur);
+      const nb = adj.get(cur)!;
+      if (nb.length !== 2) return { verts, closed: false };
+      const nx = nb[0] === prev ? nb[1] : nb[0];
+      if (used.has(edgeKey(cur, nx))) return { verts, closed: false };
       used.add(edgeKey(cur, nx));
-      if (nx === start) { out.push({ verts, closed: true }); return; }
-      verts.push(nx);
-      cur = nx;
-    }
-    out.push({ verts, closed: false });
-  };
-  for (const [v, l] of adj) if (l.length !== 2) for (const n of l) if (!used.has(edgeKey(v, n))) { used.add(edgeKey(v, n)); const ch = walkFrom(v, n); out.push(ch); }
-  function walkFrom(a: number, b: number): { verts: number[]; closed: boolean } {
-    const verts = [a, b];
-    let prev = a, cur = b;
-    while ((adj.get(cur)?.length ?? 0) === 2) {
-      const nx = adj.get(cur)!.find((n) => n !== prev && !used.has(edgeKey(cur, n)));
-      if (nx === undefined) break;
-      used.add(edgeKey(cur, nx));
-      verts.push(nx);
       prev = cur; cur = nx;
     }
-    return { verts, closed: false };
-  }
-  for (const v of adj.keys()) if ((adj.get(v) ?? []).some((n) => !used.has(edgeKey(v, n)))) walk(v);
+  };
+  // open chains start at ends / branch points
+  for (const [v, nb] of adj) if (nb.length !== 2) for (const n of nb) if (!used.has(edgeKey(v, n))) out.push(walk(v, n));
+  // what is left are closed loops
+  for (const [v, nb] of adj) for (const n of nb) if (!used.has(edgeKey(v, n))) out.push(walk(v, n));
   return out;
 }
 
@@ -167,7 +161,7 @@ export function bisectMesh(md: MeshData, co: Vec3, no: Vec3, opt: BisectOptions 
   const consider = md.verts.map((_, v) => v >= nv0 || !!selV[v]);
   const distNow = md.verts.map(d);
   if (opt.clearInner || opt.clearOuter) {
-    const rm = md.verts.map((_, v) => consider[v] && ((opt.clearInner && distNow[v] < -thr) || (opt.clearOuter && distNow[v] > thr)));
+    const rm = md.verts.map((_, v) => consider[v] && ((!!opt.clearInner && distNow[v] < -thr) || (!!opt.clearOuter && distNow[v] > thr)));
     if (rm.some(Boolean)) {
       const keep: number[] = [];
       rm.forEach((r, v) => { if (!r) keep.push(v); });
@@ -316,10 +310,11 @@ export function ripSelected(md: MeshData, mouseSide: (face: number) => number, f
     const half = Math.max(1, Math.floor(n / 2));
     for (let s = 0; s < n; s++) {
       if (through !== null) {
-        // the half must start at the face after the rip edge
-        const f = md.faces[order[s]];
-        const prev = f[(f.indexOf(v) + f.length - 1) % f.length];
-        if (prev !== through && f[(f.indexOf(v) + 1) % f.length] !== through) continue;
+        // the half must be bounded by the rip edge on one side
+        const f0 = md.faces[order[s]], f1 = md.faces[order[(s + half - 1) % n]];
+        const prev0 = f0[(f0.indexOf(v) + f0.length - 1) % f0.length];
+        const next1 = f1[(f1.indexOf(v) + 1) % f1.length];
+        if (prev0 !== through && next1 !== through) continue;
       }
       let sc = 0;
       for (let k = 0; k < half; k++) sc += score[(s + k) % n];
@@ -472,9 +467,11 @@ export function beautifyFaces(md: MeshData, angleLimit = Math.PI): number {
       const nq = normalize(add(polyNormal(P, F1), polyNormal(P, F2)));
       const side = (p: Vec3, q: Vec3, r: Vec3) => dot(cross(sub(q, p), sub(r, p)), nq);
       if (side(P[c], P[d], P[a]) * side(P[c], P[d], P[b]) >= 0) continue;
-      if (rotateEdges(md, false, new Set([k])) || rotateEdges(md, true, new Set([k]))) {
+      const fsel = md.fsel.slice();
+      const ok = rotateEdges(md, false, new Set([k])) || rotateEdges(md, true, new Set([k]));
+      md.fsel = fsel;
+      if (ok) {
         touched.add(f1); touched.add(f2);
-        md.fsel[f1] = true; md.fsel[f2] = true;
         flips++;
         changed = true;
         break;
@@ -751,45 +748,38 @@ function unsubdivideOnce(md: MeshData, onlySelected: boolean): string | null {
   ensureArrays(md);
   const faces = md.faces.map((_, i) => i).filter((i) => (!onlySelected || md.fsel[i]) && md.faces[i].length === 4);
   if (!faces.length) return 'Un-Subdivide needs selected quads';
-  const inSet = new Set(faces);
+
   const vfaces = new Map<number, number[]>();
   for (const fi of faces) for (const v of md.faces[fi]) { const l = vfaces.get(v) ?? []; l.push(fi); vfaces.set(v, l); }
   // label: 0 = kept corner, 1 = edge midpoint, 2 = face centre
   const label = new Map<number, number>();
-  const allVF = new Map<number, number>();
-  md.faces.forEach((f) => { for (const v of f) allVF.set(v, (allVF.get(v) ?? 0) + 1); });
   // seed: a vertex that cannot be a centre: valence != 4 inside the region, or a region corner
   let seed = -1;
   for (const [v, fs] of vfaces) if (fs.length === 1) { seed = v; break; }
   if (seed < 0) for (const [v, fs] of vfaces) if (fs.length !== 4 && fs.length !== 2) { seed = v; break; }
   if (seed < 0) seed = vfaces.keys().next().value as number;
-  const queue: number[] = [];
-  const done = new Set<number>();
+  // faces are processed through shared edges, so every face reached has a known corner or centre
+  // (each grid edge joins a midpoint with a corner or a centre)
+  const efaces = new Map<string, number[]>();
+  for (const fi of faces) { const f = md.faces[fi]; for (let k = 0; k < 4; k++) { const key = edgeKey(f[k], f[(k + 1) % 4]); const l = efaces.get(key) ?? []; l.push(fi); efaces.set(key, l); } }
   label.set(seed, 0);
-  for (const fi of vfaces.get(seed)!) queue.push(fi);
   let conflict = false;
   const setLabel = (v: number, l: number) => { const o = label.get(v); if (o === undefined) label.set(v, l); else if (o !== l) conflict = true; };
-  while (queue.length) {
+  const done = new Set<number>();
+  const queue: number[] = [...vfaces.get(seed)!];
+  let guard = 0;
+  while (queue.length && !conflict && guard++ < faces.length * 8) {
     const fi = queue.shift()!;
     if (done.has(fi)) continue;
     const f = md.faces[fi];
-    const k = f.findIndex((v) => label.has(v));
+    const k = f.findIndex((v) => label.get(v) === 0 || label.get(v) === 2);
     if (k < 0) { queue.push(fi); continue; }
     done.add(fi);
     const l0 = label.get(f[k])!;
-    const opp = l0 === 0 ? 2 : l0 === 2 ? 0 : 1;
-    // corners adjacent to f[k]: if f[k] is a corner/centre they are mids; if a mid, one of them is a corner, the other a centre
-    setLabel(f[(k + 2) % 4], opp);
-    if (l0 !== 1) { setLabel(f[(k + 1) % 4], 1); setLabel(f[(k + 3) % 4], 1); }
-    else {
-      const n1 = f[(k + 1) % 4], n3 = f[(k + 3) % 4];
-      const l1 = label.get(n1), l3 = label.get(n3);
-      if (l1 !== undefined) setLabel(n3, l1 === 0 ? 2 : 0);
-      else if (l3 !== undefined) setLabel(n1, l3 === 0 ? 2 : 0);
-      else { queue.push(fi); done.delete(fi); if (queue.every((q) => md.faces[q].every((v) => !label.has(v) || label.get(v) === 1))) { setLabel(n1, (allVF.get(n1) ?? 0) === 4 ? 2 : 0); setLabel(n3, label.get(n1) === 0 ? 2 : 0); } continue; }
-    }
-    for (const v of f) for (const g of vfaces.get(v) ?? []) if (!done.has(g) && inSet.has(g)) queue.push(g);
-    if (conflict) break;
+    setLabel(f[(k + 2) % 4], l0 === 0 ? 2 : 0);
+    setLabel(f[(k + 1) % 4], 1);
+    setLabel(f[(k + 3) % 4], 1);
+    for (let e = 0; e < 4; e++) for (const g of efaces.get(edgeKey(f[e], f[(e + 1) % 4])) ?? []) if (!done.has(g)) queue.push(g);
   }
   if (conflict) return 'Selection is not a regular quad grid';
   // every centre vertex with 4 region faces becomes one big quad
@@ -814,17 +804,19 @@ function unsubdivideOnce(md: MeshData, onlySelected: boolean): string | null {
     }
     if (corners.length !== 4 || new Set(corners).size !== 4) continue;
     if (corners.some((c) => label.get(c) !== 0)) continue;
+    corners.reverse();
     for (const fi of fs) removeFace.add(fi);
     newFaces.push({ f: corners, src: fs[0] });
   }
   if (!newFaces.length) return 'Nothing to un-subdivide';
+  const loose = looseEdgeList(md);
   const keep = md.faces.map((_, i) => !removeFace.has(i));
   const sel = md.fsel.slice();
   const nf: number[][] = [], ns: boolean[] = [], nm: number[] = [], nsel: boolean[] = [];
   md.faces.forEach((f, i) => { if (keep[i]) { nf.push(f); ns.push(!!md.faceSmooth[i]); nm.push(md.faceMat[i] ?? 0); nsel.push(!!sel[i]); } });
   for (const x of newFaces) { nf.push(x.f); ns.push(!!md.faceSmooth[x.src]); nm.push(md.faceMat[x.src] ?? 0); nsel.push(true); }
   md.faces = nf; md.faceSmooth = ns; md.faceMat = nm; md.fsel = nsel; md.activeFace = -1;
-  rebuildWith(md, looseEdgeList(md));
+  rebuildWith(md, loose);
   // remove orphaned mid/centre verts; mids on the region boundary stay as part of neighbouring faces
   const used = new Uint8Array(md.verts.length);
   for (const f of md.faces) for (const v of f) used[v] = 1;
@@ -918,17 +910,15 @@ export function snapToSymmetry(md: MeshData, direction: SymDirection, threshold 
     }
     if (best < 0) continue;
     const q = md.verts[best];
-    // blend between the source side (factor 0 keeps the source) and the average
+    // the source side vertex moves towards the mirror of its partner by `factor`; the partner mirrors it
     const src = Math.sign(p[axis]) === srcSign ? p : q;
     const dst = src === p ? q : p;
-    const target: Vec3 = [src[0], src[1], src[2]];
-    target[axis] = -target[axis];
-    const avgSrc: Vec3 = lerp3(src, [dst[0], dst[1], dst[2]].map((x, k) => (k === axis ? -x : x)) as Vec3, factor);
-    void target;
-    const ns = avgSrc;
-    const nd = ns.slice() as Vec3; nd[axis] = -nd[axis];
+    const mir: Vec3 = [dst[0], dst[1], dst[2]];
+    mir[axis] = -mir[axis];
+    const ns = lerp3(src, mir, factor);
     src[0] = ns[0]; src[1] = ns[1]; src[2] = ns[2];
-    dst[0] = nd[0]; dst[1] = nd[1]; dst[2] = nd[2];
+    dst[0] = ns[0]; dst[1] = ns[1]; dst[2] = ns[2];
+    dst[axis] = -ns[axis];
     done.add(v); done.add(best);
     n += 2;
   }

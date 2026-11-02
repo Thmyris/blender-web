@@ -156,7 +156,7 @@ function convertToCurve(o: BObject, keep: boolean): BObject | null {
     splines = meshEdgesToSplines(verts, edges);
     cu.materials = md.materials.slice();
   } else if (o.type === 'FONT' && o.text) {
-    splines = textToSplines(o);
+    splines = textToSplines(o, app.doc);
     cu.dimensions = '2D';
     cu.fillMode = 'FULL';
     cu.extrude = o.text.extrude;

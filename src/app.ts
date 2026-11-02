@@ -5,6 +5,7 @@ import type { BObject, Doc, MeshData, Scene, Vec3 } from './core/types';
 import { activeScene, createStartupDoc, isObjectSelectable, isObjectVisible, MatrixCache, sceneObjects, BLENDER_VERSION } from './core/scene';
 import { evaluateModifiers, type EvalMesh } from './core/modifiers';
 import { evaluateObjectAnimation } from './core/anim';
+import { evaluateNla, syncActions } from './core/nla';
 import { ensureArrays, rebuildEdges } from './core/mesh';
 import { textEvalMesh } from './core/text3d';
 import { curveObjEvalMesh } from './core/curveobj';
@@ -310,7 +311,7 @@ export class App {
 
   /** Mesh with modifiers applied (cached). */
   evalMesh(ob: BObject, render = false): EvalMesh | null {
-    if (ob.type === 'FONT') return textEvalMesh(ob);
+    if (ob.type === 'FONT') return textEvalMesh(ob, this.doc, { render, frame: this.scene.frameCurrent });
     if (CURVE_LIKE_TYPES.has(ob.type)) {
       return curveObjEvalMesh(ob, { doc: this.doc, render, frame: this.scene.frameCurrent, editMode: this.mode === 'EDIT' && this.editObject === ob.id, world: (o) => this.matrices.world(o), transforming: !!this.modal });
     }
@@ -418,7 +419,11 @@ export class App {
 
   evaluateAnimation(): void {
     const f = this.scene.frameCurrent;
-    for (const ob of Object.values(this.doc.objects)) if (ob.fcurves.length) evaluateObjectAnimation(ob, f);
+    syncActions(this.doc);
+    for (const ob of Object.values(this.doc.objects)) {
+      if (ob.animData && evaluateNla(this.doc, ob, f)) continue;
+      if (ob.fcurves.length) evaluateObjectAnimation(ob, f);
+    }
   }
 
   setFrame(frame: number): void {

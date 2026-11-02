@@ -47,6 +47,10 @@ export function knifeApply(md: MeshData, pieces: KnifePiece[], select = true): K
   ensureArrays(md);
   const nv0 = md.verts.length;
   const vertOf = new Map<string, number>();
+  // loose edges survive; face edges are rebuilt from the new faces
+  const faceEdges0 = new Set<string>();
+  for (const f of md.faces) for (let k = 0; k < f.length; k++) faceEdges0.add(edgeKey(f[k], f[(k + 1) % f.length]));
+  const loose0 = md.edges.filter(([a, b]) => !faceEdges0.has(edgeKey(a, b)));
   const EPS_T = 1e-5;
 
   // ---------------------------------------------------------- 1. points -> vertices
@@ -184,6 +188,7 @@ export function knifeApply(md: MeshData, pieces: KnifePiece[], select = true): K
   }
 
   // ---------------------------------------------------------- 3. cleanup + selection
+  md.edges = loose0;
   md.esel = md.edges.map(() => false);
   rebuildEdges(md);
   ensureArrays(md);
