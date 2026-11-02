@@ -62,7 +62,7 @@ URL options: `?nosplash` skips the splash screen; `?pyodide=<url>` loads Python 
   - G/R/S with X/Y/Z axis constraints (press twice for local axes) and Shift+X/Y/Z plane constraints.
   - Typed values (e.g. `G X 2 Enter`), Ctrl snapping, Shift precision, R R trackball.
   - Pivot points, transform orientations, and proportional editing (O, mouse wheel to resize).
-  - Snapping to increments, vertices or faces (the magnet toggle; Ctrl inverts it while transforming).
+  - Snapping to increments, vertices, edges or faces (the magnet toggle; Ctrl inverts it while transforming).
 - The **manipulator** widget for translate, rotate and scale.
 - Object tools
   - Add primitives (plane, cube, circle, UV sphere, icosphere, cylinder, cone, torus, grid), cameras, lamps and empties.
@@ -116,7 +116,7 @@ These items are shown greyed out in the UI where 2.79 has them:
   - Weight and texture paint, dynamic topology, curves, surfaces, metaballs, armatures and lattices; text objects use one built-in font and have no materials until converted to a mesh.
   - Hair particles and physics simulations (rigid body, cloth, fluid, smoke); Cycles and the Game Engine.
   - The node, NLA, sequencer and movie clip editors.
-  - UV unwrapping, knife/bevel/screw/bisect tools, edge and volume snapping, and the Suzanne (Monkey) primitive.
+  - UV unwrapping, knife/bevel/screw/bisect tools, volume snapping, and the Suzanne (Monkey) primitive.
 - **Approximations:**
   - The renderer uses Three.js, not Blender Internal, so lighting and shadows look similar but are not pixel-identical.
   - `.blend` files can't be read or written; documents use this project's own JSON format.

@@ -9,6 +9,7 @@ import type { BObject, MeshData, PivotPoint, TransformOrientation } from '../../
 import { setBasisFromMatrix, basisMatrix, threeEulerOrder } from '../../core/scene';
 import { polyNormal, vertFaces } from '../../core/mesh';
 import { insertKeyframe } from '../../core/anim';
+import { evalEdges } from '../../core/modifiers';
 import type { View3D } from './view3d';
 
 export type TransformMode = 'TRANSLATION' | 'ROTATION' | 'RESIZE' | 'TRACKBALL' | 'SHRINK_FATTEN' | 'TOSPHERE';
@@ -353,8 +354,35 @@ export function startTransform(s: TransformStart): void {
   let snapPoint: Vector3 | null = null;
   const movingIds = new Set(el.objects.map((o) => o.ob.id));
   /** Vertex under the mouse (screen distance) or point on a surface under the mouse. */
-  const snapTarget = (kind: 'VERTEX' | 'FACE'): Vector3 | null => {
+  const snapTarget = (kind: 'VERTEX' | 'FACE' | 'EDGE'): Vector3 | null => {
     const m = effectiveMouse();
+    if (kind === 'EDGE') {
+      let bestE: Vector3 | null = null, bdE = 15;
+      const segs = (pts: Vector3[], edges: [number, number][]) => {
+        for (const [a, b] of edges) {
+          const pa = view.view.project(pts[a]), pb = view.view.project(pts[b]);
+          if (pa.behind || pb.behind) continue;
+          const dx = pb.x - pa.x, dy = pb.y - pa.y;
+          const l2 = dx * dx + dy * dy;
+          const t = l2 > 0 ? Math.max(0, Math.min(1, ((m.x - pa.x) * dx + (m.y - pa.y) * dy) / l2)) : 0;
+          const dd = Math.hypot(m.x - (pa.x + dx * t), m.y - (pa.y + dy * t));
+          if (dd < bdE) { bdE = dd; bestE = pts[a].clone().lerp(pts[b], t); }
+        }
+      };
+      for (const ob of app.visibleObjects()) {
+        if (movingIds.has(ob.id) || ob.type !== 'MESH') continue;
+        if (el.mesh && ob.id === el.editOb?.id) {
+          const md = el.mesh;
+          const pts = md.verts.map((v) => new Vector3(...v).applyMatrix4(el.meshWorld));
+          segs(pts, md.edges.filter(([a, b]) => !md.vsel[a] && !md.vsel[b]));
+          continue;
+        }
+        const em = app.evalMesh(ob);
+        if (!em || em.verts.length > 60000) continue;
+        segs(view.renderer.worldVerts(ob), evalEdges(em));
+      }
+      return bestE;
+    }
     if (kind === 'FACE') {
       const hits = view.renderer.pickMeshes(m.x, m.y).filter((h) => !movingIds.has(h.ob.id) && h.ob.id !== el.editOb?.id);
       return hits[0]?.point ?? null;
@@ -454,7 +482,7 @@ export function startTransform(s: TransformStart): void {
       } else {
         d = computeTranslation();
         const snapEl = ts.snapElement;
-        const target = snap && (snapEl === 'VERTEX' || snapEl === 'FACE') ? snapTarget(snapEl) : null;
+        const target = snap && (snapEl === 'VERTEX' || snapEl === 'FACE' || snapEl === 'EDGE') ? snapTarget(snapEl) : null;
         if (target) {
           // move the closest selected point onto the snap target (Blender's default "Closest" snap target)
           const src = closestSource(target);

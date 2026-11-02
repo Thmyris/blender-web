@@ -135,7 +135,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   sn.prop({ kind: 'bool', name: 'Snap', get: () => ts().useSnap, set: (v) => { ts().useSnap = v; }, undo: false, notify: ['view'], description: 'Snap during transform (hold Ctrl to toggle while transforming)' }, { iconOnly: true, icon: 'SNAP_OFF', iconOn: 'SNAP_ON' });
   const se = sn.prop({
     kind: 'enum', name: 'Snap Element', undo: false, get: () => ts().snapElement, set: (v) => { ts().snapElement = v as never; },
-    items: [{ id: 'INCREMENT', label: 'Increment', icon: 'SNAP_INCREMENT' }, { id: 'VERTEX', label: 'Vertex', icon: 'SNAP_VERTEX' }, { id: 'EDGE', label: 'Edge', icon: 'SNAP_EDGE', disabled: true, description: 'Edge snapping is not available in blender-web' }, { id: 'FACE', label: 'Face', icon: 'SNAP_FACE' }, { id: 'VOLUME', label: 'Volume', icon: 'SNAP_VOLUME', disabled: true, description: 'Volume snapping is not available in blender-web' }],
+    items: [{ id: 'INCREMENT', label: 'Increment', icon: 'SNAP_INCREMENT' }, { id: 'VERTEX', label: 'Vertex', icon: 'SNAP_VERTEX' }, { id: 'EDGE', label: 'Edge', icon: 'SNAP_EDGE' }, { id: 'FACE', label: 'Face', icon: 'SNAP_FACE' }, { id: 'VOLUME', label: 'Volume', icon: 'SNAP_VOLUME', disabled: true, description: 'Volume snapping is not available in blender-web' }],
   }, { iconOnly: true });
   se.style.width = '36px';
   // OpenGL render
