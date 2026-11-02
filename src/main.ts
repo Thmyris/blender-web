@@ -12,6 +12,7 @@ import { SCREEN_OPERATORS } from './ops/screen';
 import { MESH_TOOL_OPERATORS, registerMeshToolKeys } from './ops/meshtools';
 import { registerUV } from './ops/uv';
 import { initEditorsExt } from './editors/ext_init';
+import { initRig } from './ops/rig_init';
 import { initCycles } from './render/cycles';
 import { dispatchKey } from './keymap';
 import { menuKeyDown, menusOpen, closeAllMenus, hideTooltip } from './ui/menu';
@@ -40,6 +41,7 @@ for (const def of MESH_TOOL_OPERATORS) a.registerOperator(def);
 registerMeshToolKeys();
 registerUV();
 initEditorsExt();
+initRig(a);
 initCycles();
 
 // regenerate text objects once the font has loaded

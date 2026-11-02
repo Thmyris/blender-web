@@ -204,7 +204,7 @@ function fieldPanels(): PanelDef[] {
       if (!x) return;
       const s1 = l.split(0.2);
       s1.column().label('Type:');
-      s1.column().prop({ ...e(F, 'type', 'Type', fieldTypeItems(), { description: 'Type of field', python: `${py}.type` }), set: (v) => { const o = ob(); if (o?.field) o.field = { ...defaultField(v as FieldSettings['type']), ...o.field, type: v as FieldSettings['type'] }; } }, { noLabel: true });
+      s1.column().prop({ ...e(F, 'type', 'Type', fieldTypeItems(), { description: 'Type of field', python: `${py}.type` }), set: (v: string) => { const o = ob(); if (o?.field) o.field = { ...defaultField(v as FieldSettings['type']), ...o.field, type: v as FieldSettings['type'] }; } }, { noLabel: true });
       const s2 = l.split(0.2);
       s2.column().label('Shape:');
       s2.column().prop(e(F, 'shape', 'Shape', [
