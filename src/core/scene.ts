@@ -382,6 +382,9 @@ export class MatrixCache {
   }
 }
 
+/** Evaluators of constraint types defined outside this module: return the new world matrix (or null to skip). */
+export const constraintEvaluators: Record<string, (doc: Doc, ob: BObject, con: Constraint, m: Matrix4, cache: MatrixCache) => Matrix4 | null> = {};
+
 function applyConstraints(doc: Doc, ob: BObject, m: Matrix4, cache: MatrixCache): void {
   for (const con of ob.constraints) {
     if (con.mute || con.influence <= 0) continue;
@@ -491,6 +494,15 @@ function applyConstraints(doc: Doc, ob: BObject, m: Matrix4, cache: MatrixCache)
         if (!target || target.id === ob.id) continue;
         const inv = new Matrix4().fromArray((con.inverse as number[]) ?? new Matrix4().toArray());
         const res = cache.world(target).clone().multiply(inv).multiply(m);
+        res.decompose(pos, quat, scl);
+        break;
+      }
+      default: {
+        // constraint types implemented in other modules (Follow Path, Clamp To: core/curvedeform.ts)
+        const fn = constraintEvaluators[con.type];
+        if (!fn) continue;
+        const res = fn(doc, ob, con, m.clone(), cache);
+        if (!res) continue;
         res.decompose(pos, quat, scl);
         break;
       }

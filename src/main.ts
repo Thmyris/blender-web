@@ -14,6 +14,7 @@ import { registerUV } from './ops/uv';
 import { initEditorsExt } from './editors/ext_init';
 import { initRig } from './ops/rig_init';
 import { initCycles } from './render/cycles';
+import { PHYSICS_OPERATORS } from './sim';
 import { dispatchKey } from './keymap';
 import { menuKeyDown, menusOpen, closeAllMenus, hideTooltip } from './ui/menu';
 import { hoveredWidget } from './ui/layout';
@@ -43,6 +44,7 @@ registerUV();
 initEditorsExt();
 initRig(a);
 initCycles();
+for (const def of PHYSICS_OPERATORS) a.registerOperator(def);
 
 // regenerate text objects once the font has loaded
 onFontLoaded(() => app.tagAllGeometry());

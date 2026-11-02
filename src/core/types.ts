@@ -233,7 +233,7 @@ export type ModifierType =
   | 'SUBSURF' | 'MIRROR' | 'ARRAY' | 'SOLIDIFY' | 'TRIANGULATE' | 'SMOOTH'
   | 'WAVE' | 'DISPLACE' | 'SIMPLE_DEFORM' | 'CAST' | 'DECIMATE' | 'EDGE_SPLIT' | 'WIREFRAME' | 'BEVEL' | 'SCREW' | 'BUILD'
   | 'ARMATURE' | 'LATTICE' | 'HOOK' | 'MASK' | 'VERTEX_WEIGHT_EDIT' | 'VERTEX_WEIGHT_MIX' | 'VERTEX_WEIGHT_PROXIMITY'
-  | 'CLOTH' | 'SOFT_BODY' | 'COLLISION' | 'EXPLODE';
+  | 'CLOTH' | 'SOFT_BODY' | 'COLLISION' | 'EXPLODE' | 'CURVE';
 
 export interface Modifier {
   type: ModifierType;
@@ -251,7 +251,7 @@ export interface Modifier {
 
 export type ConstraintType =
   | 'COPY_LOCATION' | 'COPY_ROTATION' | 'COPY_SCALE' | 'LIMIT_LOCATION' | 'LIMIT_ROTATION' | 'LIMIT_SCALE'
-  | 'TRACK_TO' | 'DAMPED_TRACK' | 'CHILD_OF';
+  | 'TRACK_TO' | 'DAMPED_TRACK' | 'CHILD_OF' | 'FOLLOW_PATH' | 'CLAMP_TO';
 
 export interface Constraint {
   type: ConstraintType;

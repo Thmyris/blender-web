@@ -4,6 +4,7 @@ import { app } from '../../app';
 import type { UnitSettings } from '../../core/types';
 import { setUnitSettings } from '../../ui/format';
 import { bprop, eprop, fprop, type EnumItem, type PanelDef } from '../../ui/layout';
+import { rigidBodyWorldPanels } from '../../sim/ui';
 import {
   activeWhen, customPropsBody, naBool, naButton, naEnum, naFloat, naIdField, naInt, richList, scene, type PropsCtx,
 } from './common';
@@ -136,11 +137,7 @@ export function scenePanels(ctx: PropsCtx): PanelDef[] {
     },
   });
 
-  P.push({
-    id: 'scene.rigidbody_world', label: 'Rigid Body World',
-    drawHeader: (hl) => { hl.prop(naBool(''), { text: '' }); },
-    draw: (l) => { naButton(l, 'Add Rigid Body World'); },
-  });
+  P.push(...rigidBodyWorldPanels(ctx));
 
   P.push({
     id: 'scene.simplify', label: 'Simplify', defaultClosed: true,

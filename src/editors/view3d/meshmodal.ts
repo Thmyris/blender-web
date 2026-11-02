@@ -8,6 +8,8 @@ import { app, operatorHooks, type ModalHandler, type OpContext, type OpProps, ty
 import type { MeshData } from '../../core/types';
 import { ensureArrays, deselectHidden, selectModeOf } from '../../core/mesh';
 import type { View3D } from './view3d';
+import { edgeSlideRails, vertNeighbours } from '../../core/meshtools';
+import { overlayDrawers } from './overlay';
 
 // ------------------------------------------------------------------ helpers
 
@@ -228,4 +230,155 @@ export function startValueModal(view: View3D, opId: string, label: string, props
       return opts.key?.(e) ?? false;
     },
   });
+}
+
+// ------------------------------------------------------------------ edge slide / vertex slide
+
+
+const worldOf = (p: number[]): Vector3 => new Vector3(p[0], p[1], p[2]).applyMatrix4(app.matrices.world(app.editObj!));
+
+export function startEdgeSlide(view: View3D): boolean {
+  const md = app.editMesh;
+  if (!md) return false;
+  const rails = edgeSlideRails(md);
+  if (!rails) { app.report('ERROR', 'Invalid selection: select edges with faces on either side to slide'); return false; }
+  const m0 = mouseIn(view);
+  // reference vertex: the rail vertex nearest the mouse
+  let ref = -1, bd = Infinity;
+  for (const v of rails.rails.keys()) { const s = view.view.project(worldOf(md.verts[v])); const d = Math.hypot(s.x - m0.x, s.y - m0.y); if (d < bd) { bd = d; ref = v; } }
+  const [A, B] = rails.rails.get(ref)!;
+  const s0 = view.view.project(worldOf(md.verts[ref]));
+  const sA = A ? view.view.project(worldOf(A)) : null, sB = B ? view.view.project(worldOf(B)) : null;
+  const props: OpProps = { value: 0, use_even: false, flipped: false, use_clamp: true };
+  const along = (s: { x: number; y: number } | null, x: number, y: number) => {
+    if (!s) return -Infinity;
+    const vx = s.x - s0.x, vy = s.y - s0.y, l2 = vx * vx + vy * vy;
+    return l2 > 1e-6 ? ((x - m0.x) * vx + (y - m0.y) * vy) / l2 : -Infinity;
+  };
+  startValueModal(view, 'transform.edge_slide', 'Edge Slide', props, (x, y) => {
+    const fa = along(sA, x, y), fb = along(sB, x, y);
+    const v = fa >= fb ? fa : -fb;
+    return props.use_clamp ? Math.max(-1, Math.min(1, v)) : v;
+  }, {
+    snap: 0.1,
+    extra: () => `   (E)ven: ${props.use_even ? 'ON' : 'OFF'}, (F)lipped: ${props.flipped ? 'ON' : 'OFF'}, Alt or (C)lamp: ${props.use_clamp ? 'ON' : 'OFF'}`,
+    key: (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'e') { props.use_even = !props.use_even; return true; }
+      if (k === 'f') { props.flipped = !props.flipped; return true; }
+      if (k === 'c' || e.key === 'Alt') { props.use_clamp = !props.use_clamp; return true; }
+      return false;
+    },
+  });
+  return true;
+}
+
+export function startVertexSlide(view: View3D): boolean {
+  const md = app.editMesh;
+  if (!md) return false;
+  const sel = md.vsel.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
+  if (!sel.length) return false;
+  const m0 = mouseIn(view);
+  let ref = sel[0], bd = Infinity;
+  for (const v of sel) { const s = view.view.project(worldOf(md.verts[v])); const d = Math.hypot(s.x - m0.x, s.y - m0.y); if (d < bd) { bd = d; ref = v; } }
+  const nbrs = vertNeighbours(md, ref);
+  if (!nbrs.length) return false;
+  const sv = view.view.project(worldOf(md.verts[ref]));
+  const props: OpProps = { value: 0, direction: [0, 0, 0], use_even: false, flipped: false };
+  startValueModal(view, 'transform.vert_slide', 'Vertex Slide', props, (x, y) => {
+    // the edge whose screen direction matches the mouse best
+    let best = nbrs[0], bs = -Infinity, bl2 = 1;
+    for (const u of nbrs) {
+      const su = view.view.project(worldOf(md.verts[u]));
+      const vx = su.x - sv.x, vy = su.y - sv.y, l = Math.hypot(vx, vy);
+      if (l < 1e-6) continue;
+      const mx = x - sv.x, my = y - sv.y, ml = Math.hypot(mx, my) || 1;
+      const sc = (vx * mx + vy * my) / (l * ml);
+      if (sc > bs) { bs = sc; best = u; bl2 = l * l; }
+    }
+    const su = view.view.project(worldOf(md.verts[best]));
+    const p = md.verts[ref], q = md.verts[best];
+    props.direction = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+    return Math.max(0, Math.min(1, ((x - sv.x) * (su.x - sv.x) + (y - sv.y) * (su.y - sv.y)) / bl2));
+  });
+  return true;
+}
+
+// ------------------------------------------------------------------ shear / push-pull
+
+export function startShear(view: View3D): boolean {
+  const center = selectionCenterWorld();
+  if (!center) return false;
+  const right = view.view.viewRight(), up = view.view.viewUp();
+  const m0 = mouseIn(view);
+  const props: OpProps = { value: 0, axis: [right.x, right.y, right.z], axis_ortho: [up.x, up.y, up.z], center: [center.x, center.y, center.z] };
+  startValueModal(view, 'transform.shear', 'Shear', props, (x) => (x - m0.x) / 100, { center, snap: 0.05 });
+  return true;
+}
+
+export function startPushPull(view: View3D): boolean {
+  const center = selectionCenterWorld();
+  if (!center) return false;
+  const pc = view.view.project(center);
+  const m0 = mouseIn(view);
+  const d0 = Math.hypot(m0.x - pc.x, m0.y - pc.y);
+  const ps = view.view.pixelSize(center);
+  const props: OpProps = { value: 0, center: [center.x, center.y, center.z] };
+  startValueModal(view, 'transform.push_pull', 'Push/Pull', props, (x, y) => (d0 - Math.hypot(x - pc.x, y - pc.y)) * ps, { center, snap: 0.1 });
+  return true;
+}
+
+// ------------------------------------------------------------------ bisect line
+
+let lineGesture: { view: View3D; a: { x: number; y: number }; b: { x: number; y: number } | null } | null = null;
+overlayDrawers.push((view, ctx) => {
+  const g = lineGesture;
+  if (!g || g.view !== view || !g.b) return;
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#000';
+  ctx.beginPath(); ctx.moveTo(g.a.x + 1, g.a.y + 1); ctx.lineTo(g.b.x + 1, g.b.y + 1); ctx.stroke();
+  ctx.strokeStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(g.a.x, g.a.y); ctx.lineTo(g.b.x, g.b.y); ctx.stroke();
+  ctx.restore();
+});
+
+/**
+ * Straight-line gesture (Bisect): press LMB, drag, release. Calls `done` with the two viewport points.
+ */
+export function startLineGesture(view: View3D, label: string, done: (a: { x: number; y: number }, b: { x: number; y: number }) => void): void {
+  let pressed = false;
+  const end = (ok: boolean) => {
+    app.endModal(h);
+    const g = lineGesture;
+    lineGesture = null;
+    view.transformState = null;
+    view.requestRender();
+    if (ok && g?.b && Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) > 3) done(g.a, g.b);
+  };
+  const h: ModalHandler = {
+    cursor: 'crosshair',
+    status: () => `${label}: drag a line with LMB, Esc or RMB to cancel`,
+    cancel: () => end(false),
+    onEvent(e) {
+      const r = view.canvasRect();
+      if (e.type === 'pointerdown') {
+        const pe = e as PointerEvent;
+        if (pe.button !== 0) { end(false); return true; }
+        pressed = true;
+        lineGesture = { view, a: { x: pe.clientX - r.left, y: pe.clientY - r.top }, b: null };
+        return true;
+      }
+      if (e.type === 'pointermove') {
+        if (pressed && lineGesture) { const pe = e as PointerEvent; lineGesture.b = { x: pe.clientX - r.left, y: pe.clientY - r.top }; view.requestRender(); }
+        return true;
+      }
+      if (e.type === 'pointerup') { if (pressed) end(true); return true; }
+      if (e.type === 'keydown') { if ((e as KeyboardEvent).key === 'Escape') end(false); return true; }
+      return true;
+    },
+  };
+  app.startModal(h);
+  view.transformState = { center: () => new Vector3(), constraint: () => null, orient: () => new Matrix3(), mode: () => 'TRANSLATION', propSize: () => 0 };
 }
