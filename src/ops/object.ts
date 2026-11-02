@@ -14,6 +14,7 @@ import {
 } from '../core/mesh';
 import { newModifier, modifierDef, evaluateModifiers } from '../core/modifiers';
 import { joinMeshInto } from '../core/meshops';
+import { newParticleSystem } from '../core/particles';
 import { confirmPopup } from '../ui/popup';
 import { showMenu } from '../ui/menu';
 import { h } from '../ui/dom';
@@ -950,6 +951,29 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
       rebuildEdges(md); ensureArrays(md);
       o.modifiers.splice(i, 1);
       app.tagGeometry(md.id);
+      return 'FINISHED';
+    },
+  },
+  // ---- particles
+  {
+    id: 'object.particle_system_add', label: 'Add Particle System Slot', description: 'Add a particle system', undo: true, register: true,
+    poll: () => app.activeObject?.type === 'MESH',
+    exec: () => {
+      const o = app.activeObject!;
+      o.particleSystems ??= [];
+      o.particleSystems.push(newParticleSystem(o.particleSystems));
+      o.activeParticleSystem = o.particleSystems.length - 1;
+      return 'FINISHED';
+    },
+  },
+  {
+    id: 'object.particle_system_remove', label: 'Remove Particle System Slot', description: 'Remove the selected particle system', undo: true, register: true,
+    poll: () => !!app.activeObject?.particleSystems?.length,
+    exec: () => {
+      const o = app.activeObject!;
+      const i = Math.min(o.activeParticleSystem ?? 0, o.particleSystems.length - 1);
+      o.particleSystems.splice(i, 1);
+      o.activeParticleSystem = Math.max(0, i - 1);
       return 'FINISHED';
     },
   },

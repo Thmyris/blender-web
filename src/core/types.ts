@@ -290,6 +290,7 @@ export interface BObject {
   activeMaterialIndex: number;
   /** Particle systems (simple emitter). */
   particleSystems: ParticleSystem[];
+  activeParticleSystem?: number;
 }
 
 export interface ParticleSystem {

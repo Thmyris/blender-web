@@ -7,8 +7,9 @@ import {
   HemisphereLight, LineBasicMaterial, LineDashedMaterial, LineSegments, Material, Matrix4, Mesh, MeshBasicMaterial,
   MeshPhongMaterial, NearestFilter, Object3D, OrthographicCamera, PlaneGeometry, PointLight, Points, Raycaster, Scene,
   ShaderMaterial, SphereGeometry, SpotLight, Vector3, WebGLRenderer, WebGLRenderTarget, Fog, PCFSoftShadowMap,
-  type Intersection, type Camera, NoBlending, SRGBColorSpace,
+  type Intersection, type Camera, NoBlending, SRGBColorSpace, PointsMaterial, CanvasTexture,
 } from 'three';
+import { particlePositions } from '../../core/particles';
 import { app } from '../../app';
 import type { BObject, LampData, MaterialData, MeshData, Vec3 } from '../../core/types';
 import { type EvalMesh, evalEdges } from '../../core/modifiers';
@@ -412,6 +413,8 @@ export class ViewportRenderer {
   private groundLineMat = new LineDashedMaterial({ color: 0x6a6a6a, dashSize: 0.15, gapSize: 0.1 });
   private relLineMat = new LineDashedMaterial({ color: 0x000000, dashSize: 0.1, gapSize: 0.1 });
   private extraLines = new Group();
+  private particleGroup = new Group();
+  private particleSprite: CanvasTexture | null = null;
   pixelRatio = 1;
   /** Render with a transparent background (Render > Alpha: Transparent). */
   transparentBackground = false;
@@ -423,7 +426,7 @@ export class ViewportRenderer {
     this.renderer.shadowMap.type = PCFSoftShadowMap;
     this.pixelRatio = Math.min(2, window.devicePixelRatio || 1);
     this.renderer.setPixelRatio(this.pixelRatio);
-    this.scene.add(this.gridGroup, this.objGroup, this.extraGroup, this.extraLines, this.lampLightGroup, this.editGroup, this.ambient);
+    this.scene.add(this.gridGroup, this.objGroup, this.extraGroup, this.extraLines, this.particleGroup, this.lampLightGroup, this.editGroup, this.ambient);
     // solid-mode lights (Blender 2.79 default "solid OpenGL lights", in view space)
     const mk = (dir: number[], col: number[], inten: number) => {
       const l = new DirectionalLight(new Color(col[0], col[1], col[2]), inten * Math.PI);
@@ -659,6 +662,7 @@ export class ViewportRenderer {
     }
     this.syncExtraLines(localView);
     this.syncLights(localView);
+    this.syncParticles(localView);
     this.syncEdit();
   }
 
@@ -686,6 +690,45 @@ export class ViewportRenderer {
       const l = new LineSegments(lineGeom(rel), this.relLineMat);
       l.computeLineDistances();
       this.extraLines.add(l);
+    }
+  }
+
+  /** Particle systems: recomputed for the current frame on every sync. */
+  private syncParticles(localView: Set<string> | null): void {
+    for (const c of [...this.particleGroup.children]) { this.particleGroup.remove(c); (c as Points).geometry.dispose(); ((c as Points).material as Material).dispose(); }
+    const sc = app.scene;
+    const rendered = this.display.shading === 'RENDERED' || this.display.showOnlyRender;
+    const g = sc.useGravity ? sc.gravity : [0, 0, 0] as Vec3;
+    for (const ob of app.objects()) {
+      if (!ob.particleSystems?.length || ob.type !== 'MESH' || !this.isVisible(ob, localView)) continue;
+      const em = app.evalMesh(ob);
+      if (!em) continue;
+      const world = app.matrices.world(ob);
+      for (const ps of ob.particleSystems) {
+        if (this.display.showOnlyRender ? !ps.showRender : !ps.showViewport) continue;
+        const frac = this.display.showOnlyRender ? 1 : ps.displayPercentage / 100;
+        const pos = particlePositions(ob, ps, em, world, sc.frameCurrent, sc.fps / (sc.fpsBase || 1), g, frac);
+        if (!pos.length) continue;
+        const geom = new BufferGeometry();
+        geom.setAttribute('position', new BufferAttribute(pos, 3));
+        geom.computeBoundingSphere();
+        let mat: PointsMaterial;
+        if (rendered) {
+          if (!this.particleSprite) {
+            const cv = document.createElement('canvas');
+            cv.width = cv.height = 64;
+            const cx = cv.getContext('2d')!;
+            const gr = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+            cx.fillStyle = gr; cx.fillRect(0, 0, 64, 64);
+            this.particleSprite = new CanvasTexture(cv);
+          }
+          mat = new PointsMaterial({ size: ps.size * 4, sizeAttenuation: true, map: this.particleSprite, transparent: true, depthWrite: false, color: 0xffffff });
+        } else {
+          mat = new PointsMaterial({ size: 3 * this.pixelRatio, sizeAttenuation: false, color: ob.select ? 0xffa040 : 0x111111 });
+        }
+        this.particleGroup.add(new Points(geom, mat));
+      }
     }
   }
 
@@ -969,7 +1012,7 @@ export class ViewportRenderer {
     if (!any) return;
     const r = this.renderer;
     const hidden: Object3D[] = [];
-    for (const g of [this.gridGroup, this.extraGroup, this.extraLines, this.editGroup]) { if (g.visible) { g.visible = false; hidden.push(g); } }
+    for (const g of [this.gridGroup, this.extraGroup, this.extraLines, this.editGroup, this.particleGroup]) { if (g.visible) { g.visible = false; hidden.push(g); } }
     for (const e of this.objects.values()) {
       for (const c of [e.wire, e.extras, e.box]) if (c && c.visible) { c.visible = false; hidden.push(c); }
     }
