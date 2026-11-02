@@ -60,10 +60,14 @@ export function renderFrame(shading: Shading = 'RENDERED'): HTMLCanvasElement | 
   const { w, h } = renderSize();
   o.view.persp = 'CAMERA';
   o.view.camOffset.set(0, 0);
-  o.view.setSize(w, h);
+  // anti-aliasing: MSAA plus supersampling for the higher sample counts (5/8/11/16 like Blender Internal)
+  const rs = app.scene.render;
+  const ss = !rs.useAntialiasing ? 1 : rs.antialiasingSamples === '16' ? 2 : rs.antialiasingSamples === '11' ? 1.5 : 1;
+  const rw = Math.round(w * ss), rh = Math.round(h * ss);
+  o.view.setSize(rw, rh);
   o.r.display.shading = shading;
   o.r.display.showWorld = true;
-  o.r.setSize(w, h);
+  o.r.setSize(rw, rh);
   const transparent = app.scene.render.alphaMode === 'TRANSPARENT';
   o.r.transparentBackground = transparent;
   o.r.sync(null);
@@ -73,7 +77,9 @@ export function renderFrame(shading: Shading = 'RENDERED'): HTMLCanvasElement | 
   out.width = w;
   out.height = h;
   const ctx = out.getContext('2d')!;
-  ctx.drawImage(o.canvas, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(o.canvas, 0, 0, rw, rh, 0, 0, w, h);
   if (app.scene.render.colorMode === 'BW') {
     const img = ctx.getImageData(0, 0, w, h);
     for (let i = 0; i < img.data.length; i += 4) {

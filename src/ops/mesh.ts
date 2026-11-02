@@ -1,10 +1,10 @@
 // Edit mode (mesh) operators.
 
-import { Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { app, type OperatorDef, type OpProps, type OpContext, type ModalHandler } from '../app';
 import type { MeshData, Vec3 } from '../core/types';
 import * as ops from '../core/meshops';
-import { flushSelection, selectModeOf, ensureArrays, rebuildEdges, edgeKey, polyCenter, type SelectMode } from '../core/mesh';
+import { flushSelection, selectModeOf, ensureArrays, rebuildEdges, edgeKey, polyCenter, deselectHidden, hideMesh, revealMesh, hasHidden, type SelectMode } from '../core/mesh';
 import { createObject, createMesh } from '../core/scene';
 import { showMenu } from '../ui/menu';
 import { viewOf, isEditMesh } from './common';
@@ -19,7 +19,7 @@ const faceSel = () => isEditMesh() && md().fsel.some(Boolean);
 
 function done(): 'FINISHED' {
   const m = app.editMesh;
-  if (m) { ensureArrays(m); app.tagGeometry(m.id); }
+  if (m) { ensureArrays(m); deselectHidden(m, mode()); app.tagGeometry(m.id); }
   app.notify('geometry', 'select');
   return 'FINISHED';
 }
@@ -234,7 +234,56 @@ function separateParts(parts: ReturnType<typeof ops.separateLoose>): void {
 
 // ------------------------------------------------------------------ operators
 
+/** Rotate the selected vertices of the edit mesh around a local centre/axis. */
+function rotateSelected(m: MeshData, c: Vector3, axis: Vector3, angle: number): void {
+  const q = new Quaternion().setFromAxisAngle(axis, angle);
+  m.verts.forEach((v, i) => {
+    if (!m.vsel[i]) return;
+    const p = new Vector3(...v).sub(c).applyQuaternion(q).add(c);
+    m.verts[i] = [p.x, p.y, p.z];
+  });
+}
+
 export const MESH_OPERATORS: OperatorDef[] = [
+  editOp({
+    id: 'mesh.spin', label: 'Spin', description: 'Extrude selected vertices in a circle around the cursor in indicated viewport',
+    props: {
+      steps: { name: 'Steps', type: 'int', default: 9, min: 0, max: 1000000, softMax: 128 },
+      dupli: { name: 'Dupli', type: 'bool', default: false, description: 'Make Duplicates' },
+      angle: { name: 'Angle', type: 'float', default: Math.PI / 2, subtype: 'ANGLE', description: 'Total rotation angle' },
+      center: { name: 'Center', type: 'vector', default: [0, 0, 0], size: 3, subtype: 'TRANSLATION' },
+      axis: { name: 'Axis', type: 'vector', default: [0, 0, 1], size: 3, subtype: 'XYZ' },
+    },
+    invoke: (ctx, p) => {
+      const view = viewOf(ctx);
+      p.center = app.scene.cursor.slice();
+      if (view) { const d = view.view.viewDir().negate(); p.axis = [d.x, d.y, d.z]; }
+      return app.operator('mesh.spin')!.exec!(ctx, p);
+    },
+    exec: (_c, p) => {
+      const m = md();
+      const inv = app.matrices.world(app.editObj!).clone().invert();
+      const c = new Vector3(...(p.center as [number, number, number])).applyMatrix4(inv);
+      const axis = new Vector3(...(p.axis as [number, number, number])).transformDirection(inv).normalize();
+      if (axis.lengthSq() < 1e-12) return 'CANCELLED';
+      const steps = Math.max(0, Math.round(Number(p.steps)));
+      const step = Number(p.angle) / Math.max(1, steps);
+      for (let i = 0; i < steps; i++) {
+        if (p.dupli) ops.duplicateSelected(m); else ops.extrudeRegion(m, mode());
+        rotateSelected(m, c, axis, step);
+      }
+      return done();
+    },
+  }),
+  editOp({
+    id: 'mesh.hide', label: 'Hide Selection', description: 'Hide (un)selected vertices, edges or faces', poll: isEditMesh,
+    props: { unselected: { name: 'Unselected', type: 'bool', default: false } },
+    exec: (_c, p) => { hideMesh(md(), !!p.unselected, mode()); return done(); },
+  }),
+  editOp({
+    id: 'mesh.reveal', label: 'Reveal Hidden', description: 'Reveal all hidden vertices, edges and faces', poll: () => isEditMesh() && hasHidden(md()),
+    exec: () => { revealMesh(md(), mode()); return done(); },
+  }),
   editOp({
     id: 'mesh.select_all', label: '(De)select All', description: 'Change selection of all vertices, edges or faces', poll: isEditMesh,
     props: { action: selAction },

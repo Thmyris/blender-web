@@ -27,7 +27,7 @@ export const PIVOT_ITEMS: EnumItem[] = [
 export const MODE_ITEMS: EnumItem[] = [
   { id: 'OBJECT', label: 'Object Mode', icon: 'OBJECT_DATAMODE' },
   { id: 'EDIT', label: 'Edit Mode', icon: 'EDITMODE_HLT' },
-  { id: 'SCULPT', label: 'Sculpt Mode', icon: 'SCULPTMODE_HLT', disabled: true, description: 'Not available in blender-web' },
+  { id: 'SCULPT', label: 'Sculpt Mode', icon: 'SCULPTMODE_HLT' },
   { id: 'VERTEX_PAINT', label: 'Vertex Paint', icon: 'VPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
   { id: 'WEIGHT_PAINT', label: 'Weight Paint', icon: 'WPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
   { id: 'TEXTURE_PAINT', label: 'Texture Paint', icon: 'TPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
@@ -46,7 +46,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   row.el.style.flex = '0 0 auto';
   // mode
   const ob = app.activeObject;
-  const modeItems = MODE_ITEMS.map((m) => (m.id === 'EDIT' && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
+  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' || m.id === 'SCULPT') && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
   const modeEl = row.prop({
     kind: 'enum', name: 'Mode', items: modeItems, get: () => app.mode, undo: false,
     set: (v) => { void app.callOperator('object.mode_set', { mode: v }, { area: view.area }); },
@@ -135,7 +135,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   sn.prop({ kind: 'bool', name: 'Snap', get: () => ts().useSnap, set: (v) => { ts().useSnap = v; }, undo: false, notify: ['view'], description: 'Snap during transform (hold Ctrl to toggle while transforming)' }, { iconOnly: true, icon: 'SNAP_OFF', iconOn: 'SNAP_ON' });
   const se = sn.prop({
     kind: 'enum', name: 'Snap Element', undo: false, get: () => ts().snapElement, set: (v) => { ts().snapElement = v as never; },
-    items: [{ id: 'INCREMENT', label: 'Increment', icon: 'SNAP_INCREMENT' }, { id: 'VERTEX', label: 'Vertex', icon: 'SNAP_VERTEX', disabled: true }, { id: 'EDGE', label: 'Edge', icon: 'SNAP_EDGE', disabled: true }, { id: 'FACE', label: 'Face', icon: 'SNAP_FACE', disabled: true }, { id: 'VOLUME', label: 'Volume', icon: 'SNAP_VOLUME', disabled: true }],
+    items: [{ id: 'INCREMENT', label: 'Increment', icon: 'SNAP_INCREMENT' }, { id: 'VERTEX', label: 'Vertex', icon: 'SNAP_VERTEX' }, { id: 'EDGE', label: 'Edge', icon: 'SNAP_EDGE', disabled: true, description: 'Edge snapping is not available in blender-web' }, { id: 'FACE', label: 'Face', icon: 'SNAP_FACE' }, { id: 'VOLUME', label: 'Volume', icon: 'SNAP_VOLUME', disabled: true, description: 'Volume snapping is not available in blender-web' }],
   }, { iconOnly: true });
   se.style.width = '36px';
   // OpenGL render

@@ -409,8 +409,9 @@ export function meshMenu(): MenuItem[] {
     ]),
     sep,
     sub('Show/Hide', [
-      { label: 'Show Hidden', disabled: true, description: 'Hiding mesh elements is not available in blender-web' },
-      { label: 'Hide Selected', disabled: true, description: 'Hiding mesh elements is not available in blender-web' },
+      op('Show Hidden', 'mesh.reveal'),
+      op('Hide Selected', 'mesh.hide', { unselected: false }),
+      op('Hide Unselected', 'mesh.hide', { unselected: true }),
     ]),
     sep,
     sub('Proportional Editing', [
@@ -468,6 +469,8 @@ export function edgesMenu(): MenuItem[] {
     op('Subdivide', 'mesh.subdivide'),
     sep,
     op('Loop Cut and Slide', 'mesh.loopcut_slide'),
+    sep,
+    op('Spin', 'mesh.spin'),
     sep,
     op('Select Sharp Edges', 'mesh.edges_select_sharp'),
   ];

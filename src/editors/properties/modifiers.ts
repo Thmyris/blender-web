@@ -266,7 +266,7 @@ const DRAW: Record<string, (l: Layout, m: M) => void> = {
     const c2 = sp.column();
     c2.prop(mf(m, 'offset', 'Offset', { min: -1, max: 1, step: 0.1, precision: 4, description: 'Offset the thickness from the center' }));
     c2.prop(mb(m, 'useFlipNormals', 'Flip Normals', 'Invert the face direction'));
-    c2.prop(mb(m, 'useEvenOffset', 'Even Thickness', 'Maintain thickness by adjusting for sharp corners (stored; not evaluated in blender-web)'));
+    c2.prop(mb(m, 'useEvenOffset', 'Even Thickness', 'Maintain thickness by adjusting for sharp corners'));
     c2.prop(naBool('High Quality Normals'));
     c2.prop(mb(m, 'useRim', 'Fill Rim', 'Create edge loops between the inner and outer surfaces on face edges', true));
     c2.prop(naBool('Only Rim'));
@@ -283,11 +283,11 @@ const DRAW: Record<string, (l: Layout, m: M) => void> = {
     c1.label('Quad Method:');
     c1.prop(me(m, 'quadMethod', 'Quad Method', [
       { id: 'BEAUTY', label: 'Beauty' }, { id: 'FIXED', label: 'Fixed' }, { id: 'FIXED_ALTERNATE', label: 'Fixed Alternate' }, { id: 'SHORTEST_DIAGONAL', label: 'Shortest Diagonal' },
-    ], 'Method for splitting the quads into triangles (stored; blender-web always splits the same way)'), { noLabel: true });
+    ], 'Method for splitting the quads into triangles'), { noLabel: true });
     const c2 = row.column();
     c2.label('Ngon Method:');
     c2.prop(me(m, 'ngonMethod', 'Ngon Method', [{ id: 'BEAUTY', label: 'Beauty' }, { id: 'CLIP', label: 'Clip' }],
-      'Method for splitting the polygons into triangles (stored; blender-web always splits the same way)'), { noLabel: true });
+      'Method for splitting the polygons into triangles'), { noLabel: true });
   },
 
   SMOOTH: (l, m) => {
@@ -328,7 +328,7 @@ const DRAW: Record<string, (l: Layout, m: M) => void> = {
     const ps = p.column(true);
     ps.prop(mf(m, 'startX', 'X', { unit: 'LENGTH', step: 0.1, precision: 4, description: 'X coordinate of the start position' }));
     ps.prop(mf(m, 'startY', 'Y', { unit: 'LENGTH', step: 0.1, precision: 4, description: 'Y coordinate of the start position' }));
-    p.prop(mf(m, 'falloffRadius', 'Falloff', { min: 0, unit: 'LENGTH', step: 0.1, description: 'Distance after which it fades out (stored)' }));
+    p.prop(mf(m, 'falloffRadius', 'Falloff', { min: 0, unit: 'LENGTH', step: 0.1, description: 'Distance after which it fades out' }));
     l.separator();
     naIdField(l, 'Start Position Object', 'OBJECT_DATA');
     l.prop(naEnum('Vertex Group', [{ id: '', label: '', icon: 'GROUP' }]));
@@ -430,7 +430,7 @@ const DRAW: Record<string, (l: Layout, m: M) => void> = {
   EDGE_SPLIT: (l, m) => {
     const sp = l.split();
     const c1 = sp.column();
-    c1.prop(mb(m, 'useEdgeAngle', 'Edge Angle', 'Split edges with high angle between faces (stored; blender-web always splits by angle)', true));
+    c1.prop(mb(m, 'useEdgeAngle', 'Edge Angle', 'Split edges with high angle between faces', true));
     const s = c1.column();
     activeWhen(s, () => m()?.useEdgeAngle !== false);
     s.prop(mf(m, 'splitAngle', 'Split Angle', { min: 0, max: Math.PI, unit: 'ROTATION', step: Math.PI / 180, description: 'Angle above which to split edges' }));
@@ -464,7 +464,7 @@ const DRAW: Record<string, (l: Layout, m: M) => void> = {
     c1.prop(mf(m, 'angle', 'Angle', { unit: 'ROTATION', step: Math.PI / 180, description: 'Angle of revolution' }));
     c1.prop(mi(m, 'steps', 'Steps', { min: 2, max: 10000, softMax: 512, description: 'Number of steps in the revolution' }));
     c1.prop(mi(m, 'renderSteps', 'Render Steps', { min: 2, max: 10000, softMax: 512, description: 'Number of steps in the revolution (for rendering)' }));
-    c1.prop(mb(m, 'useSmoothShade', 'Smooth Shading', 'Output faces with smooth shading rather than flat shaded (stored)', true));
+    c1.prop(mb(m, 'useSmoothShade', 'Smooth Shading', 'Output faces with smooth shading rather than flat shaded', true));
     c1.prop(naBool('Merge Vertices'));
     c1.prop(naFloat('Merge Distance', 0.01));
     const c2 = sp.column();

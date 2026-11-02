@@ -12,7 +12,7 @@ import {
 import { app } from '../../app';
 import type { BObject, LampData, MaterialData, MeshData, Vec3 } from '../../core/types';
 import { type EvalMesh, evalEdges } from '../../core/modifiers';
-import { polyCenter, polyNormal, triangulatePoly, edgeKey, meshBounds } from '../../core/mesh';
+import { polyCenter, polyNormal, triangulatePoly, edgeKey, meshBounds, hiddenEdges } from '../../core/mesh';
 import { isObjectVisible } from '../../core/scene';
 import type { ViewState } from './viewstate';
 import { buildTextureForMaterial, applyOrcoTexture } from './textures';
@@ -743,7 +743,9 @@ export class ViewportRenderer {
     const tris: number[] = [];
     const triFaceArr: number[] = [];
     const fcol: number[] = [];
+    const ehid = hiddenEdges(md);
     md.faces.forEach((f, fi) => {
+      if (md.fhide?.[fi]) return;
       const sel = md.fsel[fi];
       const isAct = fi === md.activeFace && sel;
       const col = isAct ? [1, 1, 1, 0.24] : sel ? [1, 0.52, 0, 0.24] : [0, 0, 0, 0.07];
@@ -768,6 +770,7 @@ export class ViewportRenderer {
     const ec: number[] = [];
     const black = [0, 0, 0], esel = [1, 0.627, 0], vsel = [1, 0.52, 0];
     md.edges.forEach(([a, b], i) => {
+      if (ehid[i]) return;
       ep.push(...md.verts[a], ...md.verts[b]);
       if (mode[0]) {
         ec.push(...(md.vsel[a] ? vsel : black), ...(md.vsel[b] ? vsel : black));
@@ -787,7 +790,7 @@ export class ViewportRenderer {
     // vertices (vertex select mode) / face dots (face mode)
     if (mode[0]) {
       const vp: number[] = [], vc: number[] = [];
-      md.verts.forEach((v, i) => { vp.push(...v); vc.push(...(md.vsel[i] ? vsel : black)); });
+      md.verts.forEach((v, i) => { if (md.vhide?.[i]) return; vp.push(...v); vc.push(...(md.vsel[i] ? vsel : black)); });
       const vg = new BufferGeometry();
       vg.setAttribute('position', new BufferAttribute(new Float32Array(vp), 3));
       vg.setAttribute('color', new BufferAttribute(new Float32Array(vc), 3));
@@ -798,7 +801,7 @@ export class ViewportRenderer {
       group.add(pts);
     } else if (mode[2] && this.display.showFaceDots) {
       const vp: number[] = [], vc: number[] = [];
-      md.faces.forEach((f, i) => { vp.push(...polyCenter(md.verts, f)); vc.push(...(md.fsel[i] ? vsel : black)); });
+      md.faces.forEach((f, i) => { if (md.fhide?.[i]) return; vp.push(...polyCenter(md.verts, f)); vc.push(...(md.fsel[i] ? vsel : black)); });
       const vg = new BufferGeometry();
       vg.setAttribute('position', new BufferAttribute(new Float32Array(vp), 3));
       vg.setAttribute('color', new BufferAttribute(new Float32Array(vc), 3));
@@ -955,7 +958,7 @@ export class ViewportRenderer {
   private renderOutline(cam: Camera): void {
     const meshes: { mesh: Mesh; mat: Material | Material[]; sel: boolean; act: boolean }[] = [];
     let any = false;
-    const editId = app.mode === 'EDIT' ? app.editObject : null;
+    const editId = app.mode === 'EDIT' || app.mode === 'SCULPT' ? app.editObject : null;
     for (const e of this.objects.values()) {
       if (!e.mesh || !e.root.visible || !e.mesh.visible) continue;
       const sel = e.ob.select && e.ob.id !== editId;
@@ -1118,6 +1121,8 @@ function versionKey(md: MeshData): string {
   for (let i = 0; i < md.esel.length; i++) if (md.esel[i]) h = (h * 37 + i) | 0;
   for (let i = 0; i < md.fsel.length; i++) if (md.fsel[i]) h = (h * 41 + i) | 0;
   h = (h * 43 + md.activeFace) | 0;
+  if (md.vhide) for (let i = 0; i < md.vhide.length; i++) if (md.vhide[i]) h = (h * 53 + i) | 0;
+  if (md.fhide) for (let i = 0; i < md.fhide.length; i++) if (md.fhide[i]) h = (h * 59 + i) | 0;
   // faces hash (topology)
   for (let i = 0; i < md.faces.length; i += Math.max(1, Math.floor(md.faces.length / 2000))) h = (h * 47 + md.faces[i].length + md.faces[i][0]) | 0;
   const prev = versions.get(md);

@@ -11,10 +11,11 @@ import { meshBounds } from '../../core/mesh';
 import type { BObject } from '../../core/types';
 import type { View3D } from './view3d';
 import { ORIENT_ITEMS } from './header';
+import { sculptPanels } from './sculpt';
 
 export const TOOL_TABS: { id: string; label: string; poll: () => boolean }[] = [
   { id: 'Tools', label: 'Tools', poll: () => true },
-  { id: 'Create', label: 'Create', poll: () => true },
+  { id: 'Create', label: 'Create', poll: () => app.mode !== 'SCULPT' },
   { id: 'Relations', label: 'Relations', poll: () => app.mode === 'OBJECT' },
   { id: 'Animation', label: 'Animation', poll: () => app.mode === 'OBJECT' },
   { id: 'Physics', label: 'Physics', poll: () => app.mode === 'OBJECT' },
@@ -157,6 +158,11 @@ export function toolshelfPanels(view: View3D): PanelDef[] {
   const tab = view.state.toolTab as string;
   const P: PanelDef[] = [];
   const isEdit = app.mode === 'EDIT';
+  if (app.mode === 'SCULPT') {
+    if (tab === 'Tools') return [...sculptPanels(), { id: 'history', label: 'History', draw: (l) => { const r = l.row(true); r.operator('ed.undo', { text: 'Undo' }); r.operator('ed.redo', { text: 'Redo' }); l.operator('ed.undo_history', { text: 'Undo History', align: 'left' }); } }];
+    if (tab === 'Grease Pencil') return [];
+    return [];
+  }
   if (tab === 'Tools') {
     if (!isEdit) {
       P.push({ id: 'transform', label: 'Transform', draw: (l) => opButtons(l, [['transform.translate', 'Translate'], ['transform.rotate', 'Rotate'], ['transform.resize', 'Scale'], ['transform.mirror', 'Mirror']]) });
@@ -197,7 +203,8 @@ export function toolshelfPanels(view: View3D): PanelDef[] {
             { label: 'Vertices Only', op: 'mesh.extrude_vertices_move' },
           ]);
           for (const [id, text] of [['mesh.extrude_region_move', 'Extrude Region'], ['mesh.extrude_faces_move', 'Extrude Individual'], ['mesh.inset', 'Inset Faces'], ['mesh.edge_face_add', 'Make Edge/Face'], ['mesh.subdivide', 'Subdivide'], ['mesh.loopcut_slide', 'Loop Cut and Slide'], ['mesh.duplicate_move', 'Duplicate']]) c2.operator(id, { text, align: 'left' });
-          na(c2, 'Spin'); na(c2, 'Screw'); na(c2, 'Knife'); na(c2, 'Bisect');
+          c2.operator('mesh.spin', { text: 'Spin', align: 'left' });
+          na(c2, 'Screw'); na(c2, 'Knife'); na(c2, 'Bisect');
           l.label('Delete:');
           const c3 = l.column(true);
           c3.menu('Delete', () => [

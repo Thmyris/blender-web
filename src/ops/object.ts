@@ -766,11 +766,19 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   {
     id: 'object.mode_set', label: 'Set Object Mode', description: 'Sets the object interaction mode', undo: true, register: true,
     poll: () => !!app.activeObject,
-    props: { mode: { name: 'Mode', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object Mode'], ['EDIT', 'Edit Mode']] }, toggle: { name: 'Toggle', type: 'bool', default: false } },
+    props: { mode: { name: 'Mode', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object Mode'], ['EDIT', 'Edit Mode'], ['SCULPT', 'Sculpt Mode']] }, toggle: { name: 'Toggle', type: 'bool', default: false } },
     exec: (_c, p) => {
       const act = app.activeObject!;
-      let mode = p.mode as 'OBJECT' | 'EDIT';
+      let mode = p.mode as 'OBJECT' | 'EDIT' | 'SCULPT';
       if (p.toggle && app.mode === mode) mode = 'OBJECT';
+      if (mode === 'SCULPT') {
+        if (act.type !== 'MESH' || act.hide) { app.report('WARNING', 'Sculpt mode needs a visible mesh object'); return 'CANCELLED'; }
+        app.mode = 'SCULPT';
+        app.editObject = act.id;
+        act.select = true;
+        app.tagAllGeometry();
+        return 'FINISHED';
+      }
       if (mode === 'EDIT') {
         if (act.type !== 'MESH') { app.report('WARNING', `Unable to execute 'Toggle Editmode', error changing modes`); return 'CANCELLED'; }
         if (act.hide) return 'CANCELLED';
@@ -790,6 +798,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   {
     id: 'object.editmode_toggle', label: 'Toggle Editmode', description: 'Toggle object\'s editmode', undo: true, register: true,
     poll: () => !!app.activeObject && (app.activeObject.type === 'MESH' || app.mode === 'EDIT'),
+    // like Blender, Tab from sculpt mode goes to edit mode; from edit mode back to object mode
     exec: (ctx) => app.operator('object.mode_set')!.exec!(ctx, { mode: app.mode === 'EDIT' ? 'OBJECT' : 'EDIT', toggle: false }) as 'FINISHED',
   },
   {

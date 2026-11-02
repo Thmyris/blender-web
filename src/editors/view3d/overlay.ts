@@ -6,6 +6,7 @@ import { Matrix3, Vector3 } from 'three';
 import { app } from '../../app';
 import { objectKeyFrames } from '../../core/anim';
 import { orientationMatrix, axisVector } from './transform';
+import { sculptSettings } from './sculpt';
 import type { View3D } from './view3d';
 
 export interface ManipHit { kind: 'translate' | 'rotate' | 'scale'; axis: number | 'view' | 'trackball' }
@@ -98,7 +99,7 @@ function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: nu
 
 export function manipulatorHit(view: View3D, x: number, y: number): ManipHit | null {
   const d = view.display;
-  if (!d.manipulator) return null;
+  if (!d.manipulator || app.mode === 'SCULPT') return null;
   const g = manipGeometry(view);
   if (!g) return null;
   const dc = Math.hypot(x - g.c.x, y - g.c.y);
@@ -151,7 +152,7 @@ function arrowHead(ctx: CanvasRenderingContext2D, from: { x: number; y: number }
 
 function drawManipulator(ctx: CanvasRenderingContext2D, view: View3D): void {
   const d = view.display;
-  if (!d.manipulator || d.showOnlyRender) return;
+  if (!d.manipulator || d.showOnlyRender || app.mode === 'SCULPT') return;
   const g = manipGeometry(view);
   if (!g) return;
   const hover = view.manipHover;
@@ -350,6 +351,22 @@ export function drawOverlay(view: View3D): void {
       ctx.stroke();
     }
     drawCursor(ctx, view);
+    // sculpt brush circle and radial control
+    if (app.mode === 'SCULPT') {
+      const sc = sculptSettings();
+      const rc = view.radialControl;
+      const pos = rc ? rc.center : view.brushPos;
+      if (pos) {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = sc.direction === 'SUBTRACT' ? 'rgba(120,170,255,0.9)' : 'rgba(255,110,110,0.9)';
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, sc.radius, 0, Math.PI * 2); ctx.stroke();
+        if (rc) {
+          ctx.fillStyle = 'rgba(255,255,255,0.15)';
+          ctx.beginPath(); ctx.arc(pos.x, pos.y, rc.which === 'radius' ? sc.radius : sc.strength * 200, 0, Math.PI * 2); ctx.fill();
+          shadowText(ctx, rc.which === 'radius' ? `${Math.round(sc.radius)}` : sc.strength.toFixed(3), pos.x - 12, pos.y + 4);
+        }
+      }
+    }
     drawManipulator(ctx, view);
   }
 
@@ -377,6 +394,13 @@ export function drawOverlay(view: View3D): void {
         ctx.lineTo(pc.x + ex, pc.y + ey);
         ctx.stroke();
       });
+    }
+    const sp = ts.snap?.();
+    if (sp) {
+      const q = v.project(sp);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, Math.PI * 2); ctx.stroke();
     }
     const ps = ts.propSize();
     if (ps > 0) {

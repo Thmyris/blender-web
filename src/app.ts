@@ -7,7 +7,7 @@ import { evaluateModifiers, type EvalMesh } from './core/modifiers';
 import { evaluateObjectAnimation } from './core/anim';
 import { ensureArrays, rebuildEdges } from './core/mesh';
 
-export type Mode = 'OBJECT' | 'EDIT';
+export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT';
 
 // ------------------------------------------------------------------ preferences
 
@@ -213,6 +213,11 @@ export class App {
     if (this.mode !== 'EDIT' || !this.editObject) return null;
     const ob = this.doc.objects[this.editObject];
     return ob && ob.type === 'MESH' && ob.data ? this.doc.meshes[ob.data] ?? null : null;
+  }
+
+  /** Object being sculpted (Sculpt Mode). */
+  get sculptObj(): BObject | null {
+    return this.mode === 'SCULPT' && this.editObject ? this.doc.objects[this.editObject] ?? null : null;
   }
 
   get editObj(): BObject | null {

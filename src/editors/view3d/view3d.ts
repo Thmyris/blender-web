@@ -16,6 +16,7 @@ import { drawOverlay, manipulatorHit, type ManipHit } from './overlay';
 import { toolshelfPanels, npanelPanels, redoPanels, TOOL_TABS } from './panels';
 import { addMenu, objectMenu, meshMenu, selectMenu, viewMenu } from './menus';
 import { drawView3DHeader } from './header';
+import { startSculptStroke, sculptKey, sculptMenu } from './sculpt';
 
 export interface OverlayShape {
   kind: 'rect' | 'circle' | 'lasso' | 'cross';
@@ -31,6 +32,7 @@ export interface TransformOverlayState {
   orient: () => import('three').Matrix3;
   mode: () => TransformMode;
   propSize: () => number;
+  snap?: () => Vector3 | null;
 }
 
 export class View3D extends Editor {
@@ -54,6 +56,9 @@ export class View3D extends Editor {
   manipHover: ManipHit | null = null;
   /** Loop-cut preview edges (world space pairs) */
   previewLines: Vector3[] | null = null;
+  /** Sculpt brush position (viewport pixels) and the F / Shift+F radial control. */
+  brushPos: { x: number; y: number } | null = null;
+  radialControl: { center: { x: number; y: number }; which: 'radius' | 'strength' } | null = null;
   private needsRender = true;
   private raf = 0;
   private destroyed = false;
@@ -262,12 +267,19 @@ export class View3D extends Editor {
       pulldown({ label: 'View', items: () => viewMenu(this) }, area, true),
       pulldown({ label: 'Select', items: () => selectMenu() }, area, true),
       pulldown({ label: 'Add', items: () => addMenu() }, area, true),
-      app.mode === 'EDIT' ? pulldown({ label: 'Mesh', items: () => meshMenu() }, area, true) : pulldown({ label: 'Object', items: () => objectMenu() }, area, true),
+      app.mode === 'EDIT' ? pulldown({ label: 'Mesh', items: () => meshMenu() }, area, true)
+        : app.mode === 'SCULPT' ? pulldown({ label: 'Sculpt', items: () => sculptMenu() }, area, true)
+          : pulldown({ label: 'Object', items: () => objectMenu() }, area, true),
     );
     drawView3DHeader(this, l);
   }
 
   override headerMenuItems() { return []; }
+
+  override onKey(e: KeyboardEvent): boolean {
+    if (app.mode === 'SCULPT') return sculptKey(this, e);
+    return false;
+  }
 
   // ---------------------------------------------------------------- events
 
@@ -289,6 +301,7 @@ export class View3D extends Editor {
   private get actionButton(): number { return app.prefs.selectMouse === 'RIGHT' ? 0 : 2; }
 
   private onHover(e: PointerEvent): void {
+    if (app.mode === 'SCULPT') { this.brushPos = this.local(e); this.requestRender(); }
     if (app.modal || e.buttons) return;
     const p = this.local(e);
     const hit = this.display.manipulator && this.renderer ? manipulatorHit(this, p.x, p.y) : null;
@@ -306,6 +319,12 @@ export class View3D extends Editor {
       this.navigateDrag(e, emulate);
       return;
     }
+    if (app.mode === 'SCULPT' && e.button === this.actionButton) {
+      e.preventDefault();
+      startSculptStroke(this, e);
+      return;
+    }
+    if (app.mode === 'SCULPT' && e.button === this.selectButton) { e.preventDefault(); return; }
     if (e.button === this.actionButton) {
       e.preventDefault();
       // manipulator

@@ -26,6 +26,9 @@ export interface MeshData {
   fsel: boolean[];
   /** Index of the active face in edit mode (-1 for none). */
   activeFace: number;
+  /** Edit-mode hidden vertices / faces (H, Alt+H). Absent when nothing is hidden. */
+  vhide?: boolean[];
+  fhide?: boolean[];
   materials: (string | null)[];
   autoSmooth: boolean;
   autoSmoothAngle: number;
@@ -312,7 +315,25 @@ export interface ParticleSystem {
 export type PivotPoint = 'BOUNDING_BOX_CENTER' | 'CURSOR' | 'INDIVIDUAL_ORIGINS' | 'MEDIAN_POINT' | 'ACTIVE_ELEMENT';
 export type TransformOrientation = 'GLOBAL' | 'LOCAL' | 'NORMAL' | 'GIMBAL' | 'VIEW';
 
+export type SculptBrush = 'DRAW' | 'CLAY' | 'INFLATE' | 'SMOOTH' | 'FLATTEN' | 'PINCH' | 'GRAB' | 'CREASE' | 'LAYER';
+
+export interface SculptSettings {
+  brush: SculptBrush;
+  /** Brush radius in screen pixels. */
+  radius: number;
+  strength: number;
+  direction: 'ADD' | 'SUBTRACT';
+  falloff: 'SMOOTH' | 'SPHERE' | 'ROOT' | 'SHARP' | 'LINEAR' | 'CONSTANT';
+  symmetry: [boolean, boolean, boolean];
+  lockAxis: [boolean, boolean, boolean];
+  spacing: number;
+  useFrontFacesOnly: boolean;
+  /** Per-brush overrides of strength (like Blender's separate brush data-blocks). */
+  brushStrength: Partial<Record<SculptBrush, number>>;
+}
+
 export interface ToolSettings {
+  sculpt?: SculptSettings;
   meshSelectMode: [boolean, boolean, boolean];
   pivotPoint: PivotPoint;
   usePivotPointAlign: boolean;

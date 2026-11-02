@@ -154,7 +154,7 @@ function constraintBox(l: Layout, ctx: PropsCtx, i: number): void {
       row.label('To:', { fixed: true });
       row.prop(eprop(C, 'trackAxis', TRACK_AXES, { name: 'Track Axis', description: 'Axis that points to the target object', notify: ['scene'] }), { expand: true });
       const r2 = body.row();
-      r2.prop(eprop(C, 'upAxis', [{ id: 'UP_X', label: 'X' }, { id: 'UP_Y', label: 'Y' }, { id: 'UP_Z', label: 'Z' }], { name: 'Up', description: 'Axis that points upward (stored; blender-web always keeps world Z up)', notify: ['scene'] }));
+      r2.prop(eprop(C, 'upAxis', [{ id: 'UP_X', label: 'X' }, { id: 'UP_Y', label: 'Y' }, { id: 'UP_Z', label: 'Z' }], { name: 'Up', description: 'Axis that points upward', notify: ['scene'] }));
       r2.prop(naBool('Target Z'));
       space(body, true);
       break;

@@ -349,7 +349,42 @@ export function startTransform(s: TransformStart): void {
   let precision = false;
   let precisionAnchor = { x: 0, y: 0 };
   let precisionBase = { x: 0, y: 0 };
-  let snap = false;
+  let snap = ts.useSnap;
+  let snapPoint: Vector3 | null = null;
+  const movingIds = new Set(el.objects.map((o) => o.ob.id));
+  /** Vertex under the mouse (screen distance) or point on a surface under the mouse. */
+  const snapTarget = (kind: 'VERTEX' | 'FACE'): Vector3 | null => {
+    const m = effectiveMouse();
+    if (kind === 'FACE') {
+      const hits = view.renderer.pickMeshes(m.x, m.y).filter((h) => !movingIds.has(h.ob.id) && h.ob.id !== el.editOb?.id);
+      return hits[0]?.point ?? null;
+    }
+    let best: Vector3 | null = null, bd = 20;
+    const consider = (p: Vector3) => {
+      const s = view.view.project(p);
+      if (s.behind) return;
+      const dd = Math.hypot(s.x - m.x, s.y - m.y);
+      if (dd < bd) { bd = dd; best = p; }
+    };
+    for (const ob of app.visibleObjects()) {
+      if (movingIds.has(ob.id) || ob.type !== 'MESH') continue;
+      if (el.mesh && ob.id === el.editOb?.id) {
+        // other (unselected) vertices of the mesh being edited
+        el.mesh.verts.forEach((v, i) => { if (!el.mesh!.vsel[i] && !el.mesh!.vhide?.[i]) consider(new Vector3(...v).applyMatrix4(el.meshWorld)); });
+        continue;
+      }
+      const verts = view.renderer.worldVerts(ob);
+      const step = Math.max(1, Math.floor(verts.length / 20000));
+      for (let i = 0; i < verts.length; i += step) consider(verts[i]);
+    }
+    return best;
+  };
+  const closestSource = (target: Vector3): Vector3 => {
+    const pts = el.mesh ? el.verts.filter((v) => el.mesh!.vsel[v.index]).map((v) => v.world) : el.objects.map((o) => o.center);
+    let best = center, bd = Infinity;
+    for (const p of pts) { const dd = p.distanceTo(target); if (dd < bd) { bd = dd; best = p; } }
+    return best;
+  };
   let rotAccum = 0;
   let lastAngle: number | null = null;
   let trackball = { x: 0, y: 0 };
@@ -418,7 +453,18 @@ export function startTransform(s: TransformStart): void {
         else { d.set(nums[0], nums[1], nums[2]); d.applyMatrix3(m); }
       } else {
         d = computeTranslation();
-        if (snap) {
+        const snapEl = ts.snapElement;
+        const target = snap && (snapEl === 'VERTEX' || snapEl === 'FACE') ? snapTarget(snapEl) : null;
+        if (target) {
+          // move the closest selected point onto the snap target (Blender's default "Closest" snap target)
+          const src = closestSource(target);
+          d = target.clone().sub(src);
+          const axes2 = constraintAxes();
+          if (axes2.length === 1) d = axes2[0].clone().multiplyScalar(d.dot(axes2[0]));
+          else if (axes2.length === 2) { const nrm = new Vector3().crossVectors(axes2[0], axes2[1]).normalize(); d.sub(nrm.multiplyScalar(d.dot(nrm))); }
+          snapPoint = target;
+        } else if (snap && snapEl === 'INCREMENT') {
+          snapPoint = null;
           // snap in the orientation's frame
           const inv = m.clone().invert();
           const local = d.clone().applyMatrix3(inv);
@@ -576,7 +622,7 @@ export function startTransform(s: TransformStart): void {
   };
 
   const keyUp = (e: KeyboardEvent) => {
-    if (e.key === 'Control') { snap = false; apply(); }
+    if (e.key === 'Control') { snap = ts.useSnap; apply(); }
     if (e.key === 'Shift') { precision = false; mouse = effectiveMouse(); apply(); }
   };
   window.addEventListener('keyup', keyUp, true);
@@ -590,7 +636,7 @@ export function startTransform(s: TransformStart): void {
         const pe = e as PointerEvent;
         const r = rect();
         const nm = { x: pe.clientX - r.left, y: pe.clientY - r.top };
-        snap = pe.ctrlKey;
+        snap = ts.useSnap !== pe.ctrlKey;
         if (pe.shiftKey && !precision) { precision = true; precisionAnchor = { ...nm }; precisionBase = { ...mouse }; }
         else if (!pe.shiftKey && precision) { mouse = effectiveMouse(); precision = false; }
         if (mode === 'ROTATION') {
@@ -639,7 +685,7 @@ export function startTransform(s: TransformStart): void {
         const k = ke.key;
         if (k === 'Escape') { finish(false); return true; }
         if (k === 'Enter' || k === ' ' || k === 'NumpadEnter') { finish(true); return true; }
-        if (k === 'Control') { snap = true; apply(); return true; }
+        if (k === 'Control') { snap = !ts.useSnap; apply(); return true; }
         if (k === 'Shift') return true;
         const lower = k.toLowerCase();
         if ((lower === 'x' || lower === 'y' || lower === 'z') && !ke.ctrlKey && !ke.altKey) {
@@ -696,7 +742,7 @@ export function startTransform(s: TransformStart): void {
       return false;
     },
   };
-  view.transformState = { center: () => center, constraint: () => constraint, orient: () => om(), mode: () => mode, propSize: () => (propOn ? propSize : 0) };
+  view.transformState = { center: () => center, constraint: () => constraint, orient: () => om(), mode: () => mode, propSize: () => (propOn ? propSize : 0), snap: () => (snap ? snapPoint : null) };
   app.startModal(handler);
   center = pivotCenter(el, pivot);
   apply();
@@ -763,7 +809,7 @@ function invokeTransform(mode: TransformMode) {
 let viewFromCtx: (ctx: OpContext) => View3D | null = () => null;
 export function setViewResolver(fn: (ctx: OpContext) => View3D | null): void { viewFromCtx = fn; }
 
-const pollTransform = () => app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
+const pollTransform = () => app.mode === 'SCULPT' ? false : app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
 
 export const TRANSFORM_OPERATORS: OperatorDef[] = [
   { id: 'transform.translate', label: 'Move', description: 'Translate (move) selected items', undo: true, register: true, poll: pollTransform,

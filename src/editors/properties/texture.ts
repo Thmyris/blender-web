@@ -435,7 +435,7 @@ export function texturePanels(ctx: PropsCtx): PanelDef[] {
       c2.label('Adjust:');
       c2.prop(fprop(T, 'intensity', { name: 'Brightness', min: 0, max: 2, step: 0.01, precision: 3, description: 'Adjust the brightness of the texture' }));
       c2.prop(fprop(T, 'contrast', { name: 'Contrast', min: 0, max: 5, step: 0.01, precision: 3, description: 'Adjust the contrast of the texture' }));
-      c2.prop(fprop(T, 'saturation', { name: 'Saturation', min: 0, max: 2, step: 0.01, precision: 3, description: 'Adjust the saturation of colors in the texture (stored; not applied by blender-web)' }));
+      c2.prop(fprop(T, 'saturation', { name: 'Saturation', min: 0, max: 2, step: 0.01, precision: 3, description: 'Adjust the saturation of colors in the texture ' }));
       l.prop(naBool('Clamp', true));
     },
   });

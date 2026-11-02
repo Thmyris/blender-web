@@ -651,7 +651,7 @@ export class Layout {
   box(): Layout { return this.child('layout-box'); }
 
   /** Two (or more) columns; the first takes `factor` of the width. */
-  split(factor = 0.5): SplitLayout {
+  split(factor?: number): SplitLayout {
     const el = h('div', { class: 'layout-split' });
     this.el.append(el);
     return new SplitLayout(el, this.root, factor);
@@ -818,6 +818,13 @@ export class Layout {
   idTemplate(o: IdTemplateOpts): HTMLElement {
     const wrap = h('div', { class: 'id-template' });
     this.el.append(wrap);
+    const newClick = () => {
+      const before = app.undoHistory().length;
+      o.onNew!();
+      app.notify('all');
+      // operators push their own undo step (asynchronously); only push one if nothing else did
+      setTimeout(() => { if (app.undoHistory().length === before) app.pushUndo('New'); }, 0);
+    };
     const build = () => {
       clear(wrap);
       const cur = o.get();
@@ -854,7 +861,7 @@ export class Layout {
         }
         if (o.onNew) {
           const n = h('div', { class: 'w w-button small' }, icon('ZOOMIN'));
-          n.addEventListener('click', () => { o.onNew!(); app.pushUndo('New'); app.notify('all'); });
+          n.addEventListener('click', () => newClick());
           attachTooltip(n, () => ({ title: 'Add a new data-block (copy of the current one)' }));
           wrap.append(n);
         }
@@ -867,7 +874,7 @@ export class Layout {
       } else if (o.onNew) {
         const n = h('div', { class: 'w w-button new' }, icon('ZOOMIN'), h('div', { class: 'w-text' }, o.newLabel ?? 'New'));
         n.style.flex = '1 1 auto';
-        n.addEventListener('click', () => { o.onNew!(); app.pushUndo('New'); app.notify('all'); });
+        n.addEventListener('click', () => newClick());
         wrap.append(n);
       }
     };
@@ -986,10 +993,11 @@ export class Layout {
 
 export class SplitLayout extends Layout {
   private count = 0;
-  constructor(el: HTMLElement, root: LayoutRoot, private factor: number) { super(el, root); }
+  /** `factor` = width of the first column; when omitted all columns share the width equally (Blender's percentage 0). */
+  constructor(el: HTMLElement, root: LayoutRoot, private factor?: number) { super(el, root); }
   override column(align = false): Layout {
     const el = h('div', { class: `layout-col${align ? ' align' : ''}` });
-    if (this.count === 0) el.style.flex = `0 0 calc(${this.factor * 100}% - 3px)`;
+    if (this.count === 0 && this.factor !== undefined) el.style.flex = `0 0 calc(${this.factor * 100}% - 3px)`;
     else el.style.flex = '1 1 0';
     this.count++;
     this.el.append(el);
@@ -999,7 +1007,7 @@ export class SplitLayout extends Layout {
   }
   override row(align = false): Layout {
     const el = h('div', { class: `layout-row${align ? ' align' : ''}` });
-    if (this.count === 0) el.style.flex = `0 0 calc(${this.factor * 100}% - 3px)`;
+    if (this.count === 0 && this.factor !== undefined) el.style.flex = `0 0 calc(${this.factor * 100}% - 3px)`;
     else el.style.flex = '1 1 0';
     this.count++;
     this.el.append(el);

@@ -4,7 +4,7 @@
 import { Vector3 } from 'three';
 import { app, type ModalHandler } from '../../app';
 import type { BObject, MeshData } from '../../core/types';
-import { edgeIndexMap, edgeKey, flushSelection, polyCenter, selectModeOf, type SelectMode } from '../../core/mesh';
+import { edgeIndexMap, edgeKey, flushSelection, polyCenter, selectModeOf, hiddenEdges, deselectHidden, type SelectMode } from '../../core/mesh';
 import type { View3D } from './view3d';
 
 // ------------------------------------------------------------------ helpers
@@ -95,7 +95,7 @@ export function pickEditElement(view: View3D, x: number, y: number, mode: Select
   if (mode === 'VERT') {
     const cands: { i: number; d: number }[] = [];
     proj.forEach((p, i) => {
-      if (p.behind) return;
+      if (p.behind || md.vhide?.[i]) return;
       const d = Math.hypot(p.x - x, p.y - y);
       if (d < 40) cands.push({ i, d });
     });
@@ -108,7 +108,9 @@ export function pickEditElement(view: View3D, x: number, y: number, mode: Select
   }
   if (mode === 'EDGE') {
     const cands: { i: number; d: number }[] = [];
+    const ehid = hiddenEdges(md);
     md.edges.forEach(([a, b], i) => {
+      if (ehid[i]) return;
       const pa = proj[a], pb = proj[b];
       if (pa.behind || pb.behind) return;
       const d = segDist(x, y, pa.x, pa.y, pb.x, pb.y);
@@ -130,6 +132,7 @@ export function pickEditElement(view: View3D, x: number, y: number, mode: Select
     let best = -1, bd = 30;
     const m = app.matrices.world(ob);
     md.faces.forEach((f, i) => {
+      if (md.fhide?.[i]) return;
       const c = new Vector3(...polyCenter(md.verts, f)).applyMatrix4(m);
       const p = view.view.project(c);
       if (p.behind) return;
@@ -169,6 +172,7 @@ export function clickSelectEdit(view: View3D, x: number, y: number, extend: bool
     if (md.activeFace >= 0 && !md.fsel[md.activeFace]) md.activeFace = -1;
   }
   void emap;
+  deselectHidden(md, mode);
   app.notify('select');
   view.renderer.invalidateEdit();
   return true;
@@ -270,7 +274,7 @@ export function regionSelect(view: View3D, inside: Inside, bounds: { x0: number;
     const world = editWorld(md, ob);
     const proj = world.map((p) => view.view.project(p));
     const vis = (i: number) => view.renderer.editPointVisible(world[i]);
-    const inV = proj.map((p, i) => !p.behind && inside(p.x, p.y) && vis(i));
+    const inV = proj.map((p, i) => !md.vhide?.[i] && !p.behind && inside(p.x, p.y) && vis(i));
     if (sm === 'VERT') {
       inV.forEach((v, i) => { if (v) md.vsel[i] = val; });
       flushSelection(md, 'VERT');
@@ -285,12 +289,14 @@ export function regionSelect(view: View3D, inside: Inside, bounds: { x0: number;
     } else {
       const m = app.matrices.world(ob);
       md.faces.forEach((f, i) => {
+        if (md.fhide?.[i]) return;
         const c = new Vector3(...polyCenter(md.verts, f)).applyMatrix4(m);
         const p = view.view.project(c);
         if (!p.behind && inside(p.x, p.y) && view.renderer.editPointVisible(c)) md.fsel[i] = val;
       });
       flushSelection(md, 'FACE');
     }
+    deselectHidden(md, sm);
     view.renderer.invalidateEdit();
     app.notify('select');
     return;

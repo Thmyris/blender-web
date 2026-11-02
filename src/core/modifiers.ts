@@ -238,7 +238,8 @@ export const MODIFIERS: ModifierDef[] = [
   // Modify
   { type: 'EDGE_SPLIT', label: 'Edge Split', icon: 'MOD_EDGESPLIT', category: 'Generate', supported: true,
     defaults: { splitAngle: (30 * Math.PI) / 180, useEdgeAngle: true, useEdgeSharp: true },
-    apply: (m, mod) => edgeSplit(m, num(mod.splitAngle, 0.5236)) },
+    // sharp edges are not modelled, so with "Edge Angle" off nothing is split
+    apply: (m, mod) => (mod.useEdgeAngle === false ? cloneEval(m) : edgeSplit(m, num(mod.splitAngle, 0.5236))) },
   // Generate
   { type: 'ARRAY', label: 'Array', icon: 'MOD_ARRAY', category: 'Generate', supported: true,
     defaults: { count: 2, useRelativeOffset: true, relativeOffset: [1, 0, 0], useConstantOffset: false, constantOffset: [1, 0, 0], useMerge: false, mergeThreshold: 0.01, fitType: 'FIXED_COUNT' },
@@ -294,7 +295,7 @@ export const MODIFIERS: ModifierDef[] = [
     apply: (m, mod, ctx) => screw(m, mod, ctx) },
   { type: 'SOLIDIFY', label: 'Solidify', icon: 'MOD_SOLIDIFY', category: 'Generate', supported: true,
     defaults: { thickness: 0.01, offset: -1, useRim: true, useEvenOffset: false, useFlipNormals: false },
-    apply: (m, mod) => solidify(m, num(mod.thickness, 0.01), num(mod.offset, -1), mod.useRim !== false, bool(mod.useFlipNormals)) },
+    apply: (m, mod) => solidify(m, num(mod.thickness, 0.01), num(mod.offset, -1), mod.useRim !== false, bool(mod.useFlipNormals), bool(mod.useEvenOffset)) },
   { type: 'SUBSURF', label: 'Subdivision Surface', icon: 'MOD_SUBSURF', category: 'Generate', supported: true,
     defaults: { levels: 1, renderLevels: 2, subdivisionType: 'CATMULL_CLARK', useSubsurfUv: true, showOnlyControlEdges: false },
     apply: (m, mod, ctx) => {
@@ -309,11 +310,17 @@ export const MODIFIERS: ModifierDef[] = [
     } },
   { type: 'TRIANGULATE', label: 'Triangulate', icon: 'MOD_TRIANGULATE', category: 'Generate', supported: true,
     defaults: { quadMethod: 'BEAUTY', ngonMethod: 'BEAUTY' },
-    apply: (m) => {
+    apply: (m, mod) => {
       const out = cloneEval(m);
       out.faces = []; out.faceSmooth = []; out.faceMat = [];
+      const qm = String(mod.quadMethod ?? 'BEAUTY');
       m.faces.forEach((f, fi) => {
-        for (const t of triangulatePoly(m.verts, f)) { out.faces.push([f[t[0]], f[t[1]], f[t[2]]]); out.faceSmooth.push(m.faceSmooth[fi]); out.faceMat.push(m.faceMat[fi]); }
+        let tris: [number, number, number][];
+        if (f.length === 4 && qm === 'FIXED') tris = [[0, 1, 2], [0, 2, 3]];
+        else if (f.length === 4 && qm === 'FIXED_ALTERNATE') tris = [[0, 1, 3], [1, 2, 3]];
+        else if (f.length === 4 && qm === 'BEAUTY') tris = beautyQuad(m.verts, f);
+        else tris = triangulatePoly(m.verts, f);
+        for (const t of tris) { out.faces.push([f[t[0]], f[t[1]], f[t[2]]]); out.faceSmooth.push(m.faceSmooth[fi]); out.faceMat.push(m.faceMat[fi]); }
       });
       return out;
     } },
@@ -410,6 +417,13 @@ export function newModifier(type: ModifierType, existing: Modifier[]): Modifier 
 
 export function evaluateModifiers(md: MeshData, mods: Modifier[], ctx: ModifierContext): EvalMesh {
   let m = evalMeshFromData(md);
+  // hidden faces are not displayed in edit mode
+  if (ctx.editMode && md.fhide?.some(Boolean)) {
+    const keep = md.faces.map((_, i) => !md.fhide![i]);
+    m.faces = m.faces.filter((_, i) => keep[i]);
+    m.faceSmooth = m.faceSmooth.filter((_, i) => keep[i]);
+    m.faceMat = m.faceMat.filter((_, i) => keep[i]);
+  }
   for (const mod of mods) {
     if (ctx.render ? !mod.showRender : !mod.showViewport) continue;
     if (ctx.editMode && !mod.showInEditmode) continue;
@@ -422,12 +436,22 @@ export function evaluateModifiers(md: MeshData, mods: Modifier[], ctx: ModifierC
 
 // ------------------------------------------------------------------ more implementations
 
-function solidify(m: EvalMesh, thickness: number, offset: number, rim: boolean, flip: boolean): EvalMesh {
+function solidify(m: EvalMesh, thickness: number, offset: number, rim: boolean, flip: boolean, even = false): EvalMesh {
   const n = vertexNormalsEval(m);
   const nv = m.verts.length;
   const outerF = (offset + 1) / 2, innerF = (offset - 1) / 2;
-  const verts: Vec3[] = m.verts.map((v, i) => add(v, scale(n[i], thickness * outerF)));
-  for (let i = 0; i < nv; i++) verts.push(add(m.verts[i], scale(n[i], thickness * innerF)));
+  // "Even Thickness": scale the offset by 1/cos(angle between vertex and face normals)
+  const evenF = new Array(nv).fill(1);
+  if (even) {
+    const sum = new Array(nv).fill(0), cnt = new Array(nv).fill(0);
+    for (const f of m.faces) {
+      const fn = polyNormal(m.verts, f);
+      for (const v of f) { sum[v] += dot(fn, n[v]); cnt[v]++; }
+    }
+    for (let i = 0; i < nv; i++) if (cnt[i]) evenF[i] = 1 / Math.max(0.25, sum[i] / cnt[i]);
+  }
+  const verts: Vec3[] = m.verts.map((v, i) => add(v, scale(n[i], thickness * outerF * evenF[i])));
+  for (let i = 0; i < nv; i++) verts.push(add(m.verts[i], scale(n[i], thickness * innerF * evenF[i])));
   const faces: number[][] = [], faceSmooth: boolean[] = [], faceMat: number[] = [];
   m.faces.forEach((f, fi) => {
     faces.push(flip ? f.slice().reverse() : f.slice()); faceSmooth.push(m.faceSmooth[fi]); faceMat.push(m.faceMat[fi]);
@@ -527,6 +551,11 @@ function wave(m: EvalMesh, mod: Modifier, ctx: ModifierContext): EvalMesh {
     if (amplit > -width && amplit < width) {
       amplit *= narrow;
       amplit = 1 / Math.exp(amplit * amplit) - minfac;
+      const falloff = num(mod.falloffRadius, 0);
+      if (falloff > 0) {
+        const dist = Math.hypot(x, y);
+        amplit *= Math.max(0, 1 - dist / falloff);
+      }
       const d = lifefac * amplit;
       if (normals) return add(co, scale(normals[i], d));
       return [co[0], co[1], co[2] + d] as Vec3;
@@ -650,4 +679,18 @@ function wireframe(m: EvalMesh, thickness: number, replace: boolean): EvalMesh {
     out.faces.push([base + 4, base + 5, base + 6, base + 7]); out.faceSmooth.push(false); out.faceMat.push(0);
   }
   return out;
+}
+
+/** Split a quad along the diagonal that gives the flatter / better shaped triangles (Blender's "Beauty"). */
+function beautyQuad(verts: Vec3[], f: number[]): [number, number, number][] {
+  const p = f.map((i) => verts[i]);
+  const quality = (a: Vec3, b: Vec3, c: Vec3) => {
+    // ratio of area to squared perimeter: higher is better shaped
+    const ar = length(cross(sub(b, a), sub(c, a))) / 2;
+    const per = length(sub(b, a)) + length(sub(c, b)) + length(sub(a, c));
+    return per > 0 ? ar / (per * per) : 0;
+  };
+  const q02 = Math.min(quality(p[0], p[1], p[2]), quality(p[0], p[2], p[3]));
+  const q13 = Math.min(quality(p[0], p[1], p[3]), quality(p[1], p[2], p[3]));
+  return q02 >= q13 ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]];
 }

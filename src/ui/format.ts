@@ -34,7 +34,10 @@ const LENGTH_METRIC: [number, string][] = [[1000, ' km'], [1, ' m'], [0.01, ' cm
 /** Format a value for display in a number field. */
 export function formatValue(value: number, unit: UnitType = 'NONE', precision = 3, isInt = false): string {
   if (!isFinite(value)) return String(value);
-  if (isInt) return String(Math.round(value));
+  if (isInt) {
+    const iv = String(Math.round(value));
+    return unit === 'PERCENTAGE' ? `${iv}%` : unit === 'PIXEL' ? `${iv} px` : iv;
+  }
   switch (unit) {
     case 'ROTATION':
       if (unitSettings.systemRotation === 'RADIANS') return unitString(value, Math.max(precision, 3), '');

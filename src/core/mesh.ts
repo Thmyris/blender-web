@@ -27,6 +27,75 @@ export function ensureArrays(m: MeshData): void {
   if (m.faceSmooth.length !== nf) m.faceSmooth = resize(m.faceSmooth, nf, m.faceSmooth.length ? m.faceSmooth[m.faceSmooth.length - 1] : false);
   if (m.faceMat.length !== nf) m.faceMat = resize(m.faceMat, nf, 0);
   if (m.activeFace >= nf) m.activeFace = -1;
+  // hidden flags are dropped (everything revealed) when the topology no longer matches
+  if (m.vhide && (m.vhide.length !== nv || (m.fhide?.length ?? -1) !== nf)) { delete m.vhide; delete m.fhide; }
+}
+
+// ------------------------------------------------------------------ hiding (edit mode)
+
+export function isVertHidden(m: MeshData, v: number): boolean { return !!m.vhide?.[v]; }
+export function isFaceHidden(m: MeshData, f: number): boolean { return !!m.fhide?.[f]; }
+export function hasHidden(m: MeshData): boolean { return !!m.vhide?.some(Boolean) || !!m.fhide?.some(Boolean); }
+
+/** Edge visibility: both vertices visible, and (if it has faces) at least one visible face. */
+export function hiddenEdges(m: MeshData): boolean[] {
+  if (!hasHidden(m)) return m.edges.map(() => false);
+  const visibleFaceEdge = new Set<string>();
+  const anyFaceEdge = new Set<string>();
+  m.faces.forEach((f, i) => {
+    for (let k = 0; k < f.length; k++) {
+      const key = edgeKey(f[k], f[(k + 1) % f.length]);
+      anyFaceEdge.add(key);
+      if (!m.fhide?.[i]) visibleFaceEdge.add(key);
+    }
+  });
+  return m.edges.map(([a, b]) => {
+    if (m.vhide?.[a] || m.vhide?.[b]) return true;
+    const key = edgeKey(a, b);
+    return anyFaceEdge.has(key) && !visibleFaceEdge.has(key);
+  });
+}
+
+/** Deselect hidden elements (Blender never keeps hidden geometry selected). */
+export function deselectHidden(m: MeshData, mode: SelectMode): void {
+  if (!hasHidden(m)) return;
+  const he = hiddenEdges(m);
+  m.verts.forEach((_, i) => { if (m.vhide?.[i]) m.vsel[i] = false; });
+  m.edges.forEach((_, i) => { if (he[i]) m.esel[i] = false; });
+  m.faces.forEach((_, i) => { if (m.fhide?.[i]) m.fsel[i] = false; });
+  flushSelection(m, mode);
+}
+
+/** Hide selected (or unselected) geometry. */
+export function hideMesh(m: MeshData, unselected: boolean, mode: SelectMode): void {
+  ensureArrays(m);
+  const vh = m.vhide?.slice() ?? m.verts.map(() => false);
+  const fh = m.fhide?.slice() ?? m.faces.map(() => false);
+  if (mode === 'FACE') {
+    m.faces.forEach((_, i) => { if (m.fsel[i] !== unselected) fh[i] = true; });
+    // vertices are hidden when every face using them is hidden (loose verts follow their selection)
+    const used = m.verts.map(() => false), visible = m.verts.map(() => false);
+    m.faces.forEach((f, i) => { for (const v of f) { used[v] = true; if (!fh[i]) visible[v] = true; } });
+    m.verts.forEach((_, v) => { if (used[v] ? !visible[v] : m.vsel[v] !== unselected) vh[v] = true; });
+  } else {
+    m.verts.forEach((_, v) => { if (m.vsel[v] !== unselected) vh[v] = true; });
+    m.faces.forEach((f, i) => { if (f.some((v) => vh[v])) fh[i] = true; });
+  }
+  m.vhide = vh;
+  m.fhide = fh;
+  deselectHidden(m, mode);
+}
+
+/** Reveal everything; revealed elements become selected (Blender's Alt+H). */
+export function revealMesh(m: MeshData, mode: SelectMode): void {
+  if (!hasHidden(m)) return;
+  const he = hiddenEdges(m);
+  m.verts.forEach((_, i) => { if (m.vhide?.[i]) m.vsel[i] = true; });
+  m.edges.forEach((_, i) => { if (he[i]) m.esel[i] = true; });
+  m.faces.forEach((_, i) => { if (m.fhide?.[i]) m.fsel[i] = true; });
+  delete m.vhide;
+  delete m.fhide;
+  if (mode === 'FACE') flushFromFaces(m); else if (mode === 'EDGE') flushFromEdges(m); else flushFromVerts(m);
 }
 
 function resize<T>(arr: T[], n: number, fill: T): T[] {

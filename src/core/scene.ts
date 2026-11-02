@@ -436,16 +436,21 @@ function applyConstraints(doc: Doc, ob: BObject, m: Matrix4, cache: MatrixCache)
           const delta = new Quaternion().setFromUnitVectors(cur.normalize(), dir);
           quat.premultiply(delta);
         } else {
-          // build an orthonormal basis: tracked axis -> dir, up axis as close to world Z as possible
-          const up = new Vector3(0, 0, 1);
-          if (Math.abs(dir.dot(up)) > 0.999) up.set(0, 1, 0);
-          const look = new Matrix4();
-          // Matrix4.lookAt builds a basis whose +Z points from target to eye, i.e. -Z points at the target.
-          look.lookAt(pos, tp, up);
-          const lq = new Quaternion().setFromRotationMatrix(look);
-          // align the requested local axis instead of -Z
-          const fix = new Quaternion().setFromUnitVectors(local.clone().normalize(), new Vector3(0, 0, -1));
-          quat.copy(lq.multiply(fix));
+          // Track To: map the local track axis onto the target direction and the local up axis
+          // as close as possible to world Z (Blender's default "Up: Z" for the world).
+          const upName = (con.upAxis as string) ?? 'UP_Y';
+          const upLocal = upName === 'UP_X' ? new Vector3(1, 0, 0) : upName === 'UP_Z' ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0);
+          const t = local.clone().normalize();
+          if (Math.abs(t.dot(upLocal)) > 0.999) break; // track and up axis are the same: Blender disables the constraint
+          const u = upLocal.clone().sub(t.clone().multiplyScalar(upLocal.dot(t))).normalize();
+          const w = new Vector3().crossVectors(t, u);
+          const worldUp = new Vector3(0, 0, 1);
+          if (Math.abs(dir.dot(worldUp)) > 0.999) worldUp.set(0, 1, 0);
+          const uw = worldUp.sub(dir.clone().multiplyScalar(worldUp.dot(dir))).normalize();
+          const ww = new Vector3().crossVectors(dir, uw);
+          const A = new Matrix4().makeBasis(dir, uw, ww);
+          const B = new Matrix4().makeBasis(t, u, w);
+          quat.setFromRotationMatrix(A.multiply(B.transpose()));
         }
         break;
       }

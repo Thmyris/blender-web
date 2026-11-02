@@ -50,7 +50,7 @@ export const TEXTURE_GLSL = /* glsl */ `
 uniform int texType; uniform float noiseScale; uniform float noiseDepth; uniform float turbulence; uniform int noiseHard;
 uniform int progression; uniform int woodType; uniform float tIntensity; uniform float tContrast;
 uniform vec3 slotColor; uniform float colorFactor; uniform int mapping; uniform vec3 tOffset; uniform vec3 tScale;
-uniform sampler2D tImage; uniform int hasImage; uniform int blendType; uniform int rgbToIntensity; uniform vec3 tTint;
+uniform sampler2D tImage; uniform int hasImage; uniform float tSat; uniform int blendType; uniform int rgbToIntensity; uniform vec3 tTint;
 varying vec3 vOrco;
 
 vec3 hash3(vec3 p){ p = vec3(dot(p,vec3(127.1,311.7,74.7)), dot(p,vec3(269.5,183.3,246.1)), dot(p,vec3(113.5,271.9,124.6))); return -1.0 + 2.0*fract(sin(p)*43758.5453123); }
@@ -143,7 +143,7 @@ export function applyOrcoTexture(mat: MeshPhongMaterial | MeshBasicMaterial, inf
     colorFactor: { value: slot.useMapColorDiffuse ? slot.diffuseColorFactor : 0 }, mapping: { value: MAP_ID[slot.mapping] ?? 0 },
     tOffset: { value: new Vector3(...slot.offset) }, tScale: { value: new Vector3(...slot.scale) },
     tImage: { value: image }, hasImage: { value: image ? 1 : 0 }, blendType: { value: BLEND_ID[slot.blendType] ?? 0 },
-    rgbToIntensity: { value: slot.useRgbToIntensity ? 1 : 0 }, tTint: { value: new Color(tex.colorTint[0], tex.colorTint[1], tex.colorTint[2]) },
+    rgbToIntensity: { value: slot.useRgbToIntensity ? 1 : 0 }, tSat: { value: tex.saturation ?? 1 }, tTint: { value: new Color(tex.colorTint[0], tex.colorTint[1], tex.colorTint[2]) },
   };
   ud.hasTex = true;
   ud.texUniforms = uniforms;
@@ -161,7 +161,7 @@ export function applyOrcoTexture(mat: MeshPhongMaterial | MeshBasicMaterial, inf
         vec3 col; float fac;
         if (tc.r < 0.0) { col = slotColor; fac = tc.a; }
         else if (rgbToIntensity == 1) { col = slotColor; fac = dot(tc.rgb, vec3(0.35, 0.45, 0.2)); }
-        else { col = tc.rgb * tTint; fac = tc.a; }
+        else { col = tc.rgb * tTint; float lum = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = max(mix(vec3(lum), col, tSat), 0.0); fac = tc.a; }
         diffuseColor.rgb = blendColor(diffuseColor.rgb, col, fac * colorFactor);
       }`);
   };
