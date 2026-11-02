@@ -22,8 +22,7 @@ import type { Area } from './screen/screen';
 // editors (each registers itself)
 import './editors/view3d/view3d';
 import './editors/outliner';
-// The Properties editor registers itself from its own folder (eager glob keeps the build working while it is absent).
-import.meta.glob('./editors/properties/index.ts', { eager: true });
+import './editors/properties';
 import './editors/info';
 import './editors/anim';
 import './editors/text';

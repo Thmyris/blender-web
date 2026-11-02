@@ -24,6 +24,15 @@ import { activeLayer, hasSelected, isObjectMode, viewAlignedRotation, viewOf } f
 import { startTransform } from '../editors/view3d/transform';
 
 const deg = Math.PI / 180;
+const MODIFIER_ITEMS: [string, string][] = [
+  ['ARRAY', 'Array'], ['BUILD', 'Build'], ['EDGE_SPLIT', 'Edge Split'], ['MIRROR', 'Mirror'], ['SCREW', 'Screw'], ['SOLIDIFY', 'Solidify'],
+  ['SUBSURF', 'Subdivision Surface'], ['TRIANGULATE', 'Triangulate'], ['WIREFRAME', 'Wireframe'], ['CAST', 'Cast'], ['DISPLACE', 'Displace'],
+  ['SIMPLE_DEFORM', 'Simple Deform'], ['SMOOTH', 'Smooth'], ['WAVE', 'Wave'],
+];
+const CONSTRAINT_ITEMS: [string, string][] = [
+  ['COPY_LOCATION', 'Copy Location'], ['COPY_ROTATION', 'Copy Rotation'], ['COPY_SCALE', 'Copy Scale'], ['LIMIT_LOCATION', 'Limit Location'],
+  ['LIMIT_ROTATION', 'Limit Rotation'], ['LIMIT_SCALE', 'Limit Scale'], ['TRACK_TO', 'Track To'], ['DAMPED_TRACK', 'Damped Track'], ['CHILD_OF', 'Child Of'],
+];
 
 // ------------------------------------------------------------------ add primitives
 
@@ -870,7 +879,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   {
     id: 'object.modifier_add', label: 'Add Modifier', description: 'Add a procedural operation/effect to the active object', undo: true, register: true,
     poll: () => app.activeObject?.type === 'MESH',
-    props: { type: { name: 'Type', type: 'enum', default: 'SUBSURF', items: [] } },
+    props: { type: { name: 'Type', type: 'enum', default: 'SUBSURF', items: MODIFIER_ITEMS } },
     exec: (_c, p) => {
       const o = app.activeObject!;
       const def = modifierDef(String(p.type));
@@ -938,7 +947,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   // ---- constraints
   {
     id: 'object.constraint_add', label: 'Add Constraint', description: 'Add a constraint to the active object', undo: true, register: true, poll: () => !!app.activeObject,
-    props: { type: { name: 'Type', type: 'enum', default: 'COPY_LOCATION', items: [] } },
+    props: { type: { name: 'Type', type: 'enum', default: 'COPY_LOCATION', items: CONSTRAINT_ITEMS } },
     exec: (_c, p) => { const o = app.activeObject!; o.constraints.push(newConstraint(p.type as ConstraintType, o, null)); return 'FINISHED'; },
   },
   {

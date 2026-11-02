@@ -255,21 +255,21 @@ function itemText(k: KeyItem): string {
   return [k.shift ? 'Shift' : '', k.ctrl ? 'Ctrl' : '', k.alt ? 'Alt' : '', keyName(k.code)].filter(Boolean).join(' ');
 }
 
-function propsMatch(want: OpProps | undefined, have: OpProps | undefined): boolean {
-  if (!want) return !have || Object.keys(have).length === 0 || true;
-  for (const [key, v] of Object.entries(want)) {
-    if (JSON.stringify(have?.[key]) !== JSON.stringify(v)) return false;
-  }
-  return true;
-}
-
 setShortcutResolver((op, props) => {
   const items = KEYMAP.filter((k) => k.op === op && (k.mode === undefined || k.mode === app.mode));
   if (!items.length) return undefined;
-  const exact = items.find((k) => propsMatch(props && Object.keys(props).length ? props : undefined, k.props) && propsMatch(k.props, props ?? {}));
-  const best = exact ?? (props && Object.keys(props).length ? undefined : items.find((k) => !k.props || !Object.keys(k.props).length));
-  return best ? itemText(best) : undefined;
+  // an item matches when all of its props agree with the requested props (missing keys count as falsy/defaults)
+  const want = props ?? {};
+  const agrees = (k: KeyItem) => Object.entries(k.props ?? {}).every(([key, v]) => JSON.stringify(want[key] ?? defaultOf(v)) === JSON.stringify(v));
+  const conflicts = (k: KeyItem) => Object.entries(want).some(([key, v]) => k.props && key in k.props && JSON.stringify(k.props[key]) !== JSON.stringify(v));
+  const cands = items.filter((k) => agrees(k) && !conflicts(k));
+  cands.sort((a, b) => Object.keys(b.props ?? {}).length - Object.keys(a.props ?? {}).length);
+  return cands[0] ? itemText(cands[0]) : undefined;
 });
+
+function defaultOf(v: unknown): unknown {
+  return typeof v === 'boolean' ? false : typeof v === 'number' ? 0 : typeof v === 'string' ? '' : null;
+}
 
 export function shortcutList(): [string, [string, string][]][] {
   const groups = new Map<string, [string, string][]>();
