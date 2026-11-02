@@ -1,0 +1,22 @@
+{
+  "name": "blender-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A browser-based recreation of the Blender 2.79b user interface built with TypeScript and Three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "5.9",
+    "vite": "^8.3.5"
+  }
+}
