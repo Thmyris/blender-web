@@ -5,7 +5,7 @@ import { renameData } from '../../core/scene';
 import type { MaterialData } from '../../core/types';
 import { bprop, cprop, eprop, fprop, iprop, type EnumItem, type PanelDef } from '../../ui/layout';
 import {
-  activeMaterial, activeSlotIndex, activeWhen, callOp, customPropsBody, flatPanel, meshData, NA, naBool, naEnum, naFloat,
+  activeMaterial, activeSlotIndex, activeWhen, callOp, customPropsBody, flatPanel, meshData, slotData, NA, naBool, naEnum, naFloat,
   naInt, naString, ob, richList, usersOf, type PropsCtx,
 } from './common';
 import { drawMaterialPreview, materialPreviewKey, previewCanvas } from './preview';
@@ -13,7 +13,7 @@ import { drawMaterialPreview, materialPreviewKey, previewCanvas } from './previe
 const MA = activeMaterial;
 const hasMat = () => !!activeMaterial();
 const shadeless = () => !!activeMaterial()?.useShadeless;
-const geom = () => app.tagGeometry(meshData()?.id);
+const geom = () => { const id = meshData()?.id; if (id) app.tagGeometry(id); else app.tagAllGeometry(); };
 
 const PREVIEW_TYPES: EnumItem[] = [
   { id: 'FLAT', label: 'Flat', icon: 'MESH_PLANE', description: 'Flat XY plane' },
@@ -41,20 +41,20 @@ export function materialPanels(ctx: PropsCtx): PanelDef[] {
 
   P.push({
     id: 'material.context', label: '', noHeader: true,
-    key: () => `${meshData()?.materials.length ?? 0}|${app.mode}`,
+    key: () => `${slotData()?.materials.length ?? 0}|${app.mode}`,
     draw: (l) => {
       flatPanel(l);
-      const n = meshData()?.materials.length ?? 0;
+      const n = slotData()?.materials.length ?? 0;
       const sortable = n > 1;
       richList(l, {
         rows: sortable ? 4 : 1,
-        items: () => (meshData()?.materials ?? []).map((id) => {
+        items: () => (slotData()?.materials ?? []).map((id) => {
           const m = id ? app.doc.materials[id] : null;
           return { label: m?.name ?? '', icon: 'MATERIAL', dim: !m };
         }),
         active: () => activeSlotIndex(),
         setActive: (i) => { const o = ob(); if (o) o.activeMaterialIndex = i; },
-        rename: (i, name) => { const id = meshData()?.materials[i]; if (id) renameData(app.doc, 'materials', id, name); },
+        rename: (i, name) => { const id = slotData()?.materials[i]; if (id) renameData(app.doc, 'materials', id, name); },
         side: [
           { icon: 'ZOOMIN', tip: 'Add Material Slot', action: () => callOp(ctx, 'object.material_slot_add'), disabled: () => !app.pollOperator('object.material_slot_add', ctx.area) },
           { icon: 'ZOOMOUT', tip: 'Remove Material Slot', action: () => callOp(ctx, 'object.material_slot_remove'), disabled: () => !app.pollOperator('object.material_slot_remove', ctx.area) },
@@ -83,7 +83,7 @@ export function materialPanels(ctx: PropsCtx): PanelDef[] {
         items: () => Object.values(app.doc.materials).map((m) => ({ id: m.id, name: m.name, icon: 'MATERIAL' })),
         get: () => MA()?.id ?? null,
         set: (id) => {
-          const o = ob(); const md = meshData();
+          const o = ob(); const md = slotData();
           if (!o || !md || !id) return;
           if (!md.materials.length) { md.materials.push(id); o.activeMaterialIndex = 0; }
           else md.materials[activeSlotIndex()] = id;
@@ -95,11 +95,11 @@ export function materialPanels(ctx: PropsCtx): PanelDef[] {
         fakeUser: { get: () => !!MA()?.fakeUser, set: (v) => { const m = MA(); if (m) m.fakeUser = v; } },
         newLabel: 'New',
         onNew: () => callOp(ctx, 'material.new'),
-        unlink: () => { const md = meshData(); const i = activeSlotIndex(); if (md && i >= 0) { md.materials[i] = null; geom(); } },
+        unlink: () => { const md = slotData(); const i = activeSlotIndex(); if (md && i >= 0) { md.materials[i] = null; geom(); } },
       });
       const lr = sp.column();
       if (n) lr.prop(naEnum('Link', [{ id: 'DATA', label: 'Data' }, { id: 'OBJECT', label: 'Object' }], 'DATA'), { noLabel: true });
-      if (MA()) {
+      if (MA() && app.scene.render.engine !== 'CYCLES') {
         l.row().prop(eprop(MA, 'type', [
           { id: 'SURFACE', label: 'Surface', description: 'Render object as a surface' },
           { id: 'WIRE', label: 'Wire', description: 'Render the edges of faces as wires (not supported in ray tracing)' },

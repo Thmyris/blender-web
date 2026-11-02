@@ -9,6 +9,10 @@ import { orientationMatrix, axisVector } from './transform';
 import { sculptSettings } from './sculpt';
 import { vpaintSettings } from './vpaint';
 import type { View3D } from './view3d';
+import { drawEditType2D, editTypeSelectedPoints, drawObjects2D } from './edittypes';
+
+/** Extra 2D overlay drawing (knife lines, tool previews, ...), called every redraw of the 3D View. */
+export const overlayDrawers: ((view: View3D, ctx: CanvasRenderingContext2D) => void)[] = [];
 
 export interface ManipHit { kind: 'translate' | 'rotate' | 'scale'; axis: number | 'view' | 'trackball' }
 
@@ -21,7 +25,9 @@ function manipCenter(): Vector3 | null {
   const ts = app.scene.toolSettings;
   const md = app.editMesh, eob = app.editObj;
   let pts: Vector3[] = [];
-  if (md && eob) {
+  const etPts = editTypeSelectedPoints();
+  if (etPts) pts = etPts;
+  else if (md && eob) {
     const m = app.matrices.world(eob);
     md.verts.forEach((v, i) => { if (md.vsel[i]) pts.push(new Vector3(v[0], v[1], v[2]).applyMatrix4(m)); });
     if (ts.pivotPoint === 'ACTIVE_ELEMENT' && md.activeFace >= 0 && md.fsel[md.activeFace]) {
@@ -351,6 +357,9 @@ export function drawOverlay(view: View3D): void {
       }
       ctx.stroke();
     }
+    drawEditType2D(view, ctx);
+    for (const fn of overlayDrawers) fn(view, ctx);
+    drawObjects2D(view, ctx);
     drawCursor(ctx, view);
     // sculpt brush circle and radial control
     if (app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') {

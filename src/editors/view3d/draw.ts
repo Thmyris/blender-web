@@ -17,6 +17,11 @@ import { polyCenter, polyNormal, triangulatePoly, edgeKey, meshBounds, hiddenEdg
 import { isObjectVisible } from '../../core/scene';
 import type { ViewState } from './viewstate';
 import { buildTextureForMaterial, applyOrcoTexture } from './textures';
+import { syncEditTypeOverlay, objectDrawerFor } from './edittypes';
+import { hasEvalGeometry } from '../../core/geomtypes';
+import { materialSlots } from '../../core/matslots';
+import type { Texture } from 'three';
+import { materialDiffuse } from '../../nodes/shader_nodes';
 
 export type Shading = 'BOUNDBOX' | 'WIREFRAME' | 'SOLID' | 'TEXTURED' | 'MATERIAL' | 'RENDERED';
 
@@ -92,6 +97,9 @@ interface ObjEntry {
   extrasKey: string;
   box: LineSegments | null;
   geom: GeomCache | null;
+  /** Custom drawing of other object types (edittypes.ts `registerObjectDrawer`). */
+  custom?: Group | null;
+  customKey?: string;
 }
 
 const _m = new Matrix4();
@@ -421,6 +429,12 @@ export class ViewportRenderer {
   pixelRatio = 1;
   /** Render with a transparent background (Render > Alpha: Transparent). */
   transparentBackground = false;
+  /**
+   * Image rendered by another engine (Cycles viewport rendering, src/render/cycles/viewport.ts), shown
+   * in Rendered shading instead of the shaded meshes; wires, lamps, cameras and edit overlays draw on top.
+   */
+  externalImage: Texture | null = null;
+  private externalScene: Scene | null = null;
 
   constructor(public canvas: HTMLCanvasElement, public view: ViewState, public display: ViewDisplay, opts: { alpha?: boolean } = {}) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, alpha: !!opts.alpha, preserveDrawingBuffer: true });
@@ -506,7 +520,8 @@ export class ViewportRenderer {
     if (e.key !== key) {
       e.key = key;
       const side = this.display.backfaceCulling ? FrontSide : DoubleSide;
-      const diff = new Color(ma.diffuseColor[0], ma.diffuseColor[1], ma.diffuseColor[2]);
+      const dc = materialDiffuse(ma);
+      const diff = new Color(dc[0], dc[1], dc[2]);
       const spec = new Color(ma.specularColor[0], ma.specularColor[1], ma.specularColor[2]).multiplyScalar(ma.specularIntensity);
       e.solid.color.copy(diff);
       e.solid.specular.copy(spec).multiplyScalar(0.6);
@@ -585,10 +600,10 @@ export class ViewportRenderer {
       const active = app.scene.activeObject === ob.id;
       const wireMat = active && selected ? this.wireMats.active : selected ? this.wireMats.select : this.wireMats.normal;
 
-      if (ob.type === 'MESH' || ob.type === 'FONT') {
+      if (hasEvalGeometry(ob.type)) {
         const em = app.evalMesh(ob, false);
         const md = app.meshOf(ob);
-        if (em && (md || ob.type === 'FONT')) {
+        if (em && (md || ob.type !== 'MESH')) {
           const smoothKey = `${md?.autoSmooth}${md?.autoSmoothAngle}`;
           if (!e.geom || e.geom.src !== em || e.geom.smoothKey !== smoothKey) {
             e.geom?.geom.dispose();
@@ -612,7 +627,7 @@ export class ViewportRenderer {
           }
           // materials per slot
           const mats: Material[] = [];
-          const slots = md?.materials ?? [];
+          const slots = md?.materials ?? materialSlots(app.doc, ob) ?? [];
           for (let i = 0; i < Math.max(1, e.geom.matCount, slots.length); i++) {
             const mm = this.materialFor(slots[i] ?? null);
             let m: Material;
@@ -643,6 +658,8 @@ export class ViewportRenderer {
           e.wire.visible = !isEdit && (drawType === 'WIRE' || ((ob.showWire) && drawType !== 'BOUNDS'));
           e.wire.material = drawType === 'WIRE' ? wireMat : this.wireMats.normal;
           if (drawType === 'WIRE' && shading !== 'WIREFRAME' && !selected) e.wire.material = this.wireMats.normal;
+          // curves without bevel / extrusion are drawn as a wire (black, or in the selection colour)
+          if (ob.type !== 'MESH' && !em.faces.length && em.looseEdges.length && drawType !== 'BOUNDS') { e.wire.visible = true; e.wire.material = isEdit ? this.wireMats.normal : wireMat; }
           // bounds
           const showBox = drawType === 'BOUNDS' || ob.showBounds;
           if (showBox) {
@@ -659,6 +676,8 @@ export class ViewportRenderer {
             e.box.visible = true;
           } else if (e.box) e.box.visible = false;
         }
+      } else if (objectDrawerFor(ob.type)) {
+        this.syncCustom(e, ob, selected, active);
       } else {
         const ex = extrasFor(ob);
         if (ex && (!e.extras || e.extrasKey !== ex.key)) {
@@ -783,6 +802,8 @@ export class ViewportRenderer {
   // ---------------------------------------------------------------- edit mode overlay
 
   private syncEdit(): void {
+    // curves, surfaces, metaballs, armatures, lattices, ... (edittypes.ts)
+    syncEditTypeOverlay(this.editGroup, this);
     const md = app.editMesh;
     const ob = app.editObj;
     if (!md || !ob) {
@@ -790,7 +811,8 @@ export class ViewportRenderer {
       return;
     }
     const ts = app.scene.toolSettings;
-    const key = JSON.stringify([ob.id, md.verts.length, md.faces.length, md.edges.length, ts.meshSelectMode, this.display.useOcclude]) + versionKey(md);
+    const seamHash = md.seam ? md.seam.reduce((h, x, i) => (x ? (h * 31 + i) | 0 : h), 7) : 0;
+    const key = JSON.stringify([ob.id, md.verts.length, md.faces.length, md.edges.length, ts.meshSelectMode, this.display.useOcclude, seamHash]) + versionKey(md);
     if (this.edit && key === this.editKey) {
       this.edit.group.matrix.copy(app.matrices.world(ob));
       this.edit.group.matrixWorldNeedsUpdate = true;
@@ -833,10 +855,13 @@ export class ViewportRenderer {
     const ep: number[] = [];
     const ec: number[] = [];
     const black = [0, 0, 0], esel = [1, 0.627, 0], vsel = [1, 0.52, 0];
+    const seamCol = [0.86, 0, 0];
     md.edges.forEach(([a, b], i) => {
       if (ehid[i]) return;
       ep.push(...md.verts[a], ...md.verts[b]);
-      if (mode[0]) {
+      // UV seams are drawn red unless selected
+      if (md.seam?.[i] && !(mode[0] ? md.vsel[a] && md.vsel[b] : md.esel[i])) ec.push(...seamCol, ...seamCol);
+      else if (mode[0]) {
         ec.push(...(md.vsel[a] ? vsel : black), ...(md.vsel[b] ? vsel : black));
       } else {
         const c = md.esel[i] ? esel : black;
@@ -988,6 +1013,7 @@ export class ViewportRenderer {
     this.solidLights.position.copy(cam.position);
     this.solidLights.quaternion.copy(cam.quaternion);
     this.solidLights.updateMatrixWorld(true);
+    if (this.externalImage && shading === 'RENDERED') { this.renderExternal(cam, this.externalImage); return; }
     // world background / mist
     if (showWorld && world) {
       const sm = this.sky.material as ShaderMaterial;
@@ -1017,6 +1043,46 @@ export class ViewportRenderer {
     if (this.display.showOutlineSelected && (shading === 'SOLID' || shading === 'TEXTURED' || shading === 'MATERIAL') && !this.display.showOnlyRender) {
       this.renderOutline(cam);
     }
+  }
+
+  /** Rendered shading with an external image: the image, mesh depth only, then the overlays. */
+  private renderExternal(cam: Camera, tex: Texture): void {
+    const r = this.renderer;
+    if (!this.externalScene) {
+      this.externalScene = new Scene();
+      const q = new Mesh(new PlaneGeometry(2, 2), new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true, premultipliedAlpha: true, toneMapped: false }));
+      q.frustumCulled = false;
+      this.externalScene.add(q);
+    }
+    const quad = this.externalScene.children[0] as Mesh;
+    const qm = quad.material as MeshBasicMaterial;
+    if (qm.map !== tex) { qm.map = tex; qm.needsUpdate = true; }
+    r.setRenderTarget(null);
+    r.setClearColor(COL.bg, 1);
+    r.clear(true, true, true);
+    r.render(this.externalScene, this.outlineCam);
+    const hidden: Object3D[] = [];
+    for (const g of [this.gridGroup, this.particleGroup]) if (g.visible) { g.visible = false; hidden.push(g); }
+    const skyParent = this.sky.parent;
+    if (skyParent) this.scene.remove(this.sky);
+    const bg = this.scene.background, fog = this.scene.fog, autoShadow = r.shadowMap.autoUpdate;
+    this.scene.background = null;
+    this.scene.fog = null;
+    r.shadowMap.autoUpdate = false;
+    const swapped: { mesh: Mesh; mat: Material | Material[]; order: number }[] = [];
+    for (const e of this.objects.values()) {
+      if (!e.mesh) continue;
+      swapped.push({ mesh: e.mesh, mat: e.mesh.material, order: e.mesh.renderOrder });
+      e.mesh.material = this.maskDepthMat;
+      e.mesh.renderOrder = -100;
+    }
+    r.render(this.scene, cam);
+    for (const sw of swapped) { sw.mesh.material = sw.mat; sw.mesh.renderOrder = sw.order; }
+    for (const o of hidden) o.visible = true;
+    if (skyParent) this.scene.add(this.sky);
+    this.scene.background = bg;
+    this.scene.fog = fog;
+    r.shadowMap.autoUpdate = autoShadow;
   }
 
   private renderOutline(cam: Camera): void {
@@ -1133,8 +1199,44 @@ export class ViewportRenderer {
   }
 
   /** Line segments of extras (cameras/lamps/empties) in world space, for click selection. */
+  /** Custom object drawing (armatures, lattices, ...): rebuilt when the drawer's key changes. */
+  private syncCustom(e: ObjEntry, ob: BObject, selected: boolean, active: boolean): void {
+    const drawer = objectDrawerFor(ob.type)!;
+    const st = { selected, active, display: this.display, renderer: this };
+    const key = drawer.key(ob, st);
+    if (!e.custom || e.customKey !== key) {
+      if (e.custom) {
+        e.root.remove(e.custom);
+        e.custom.traverse((o) => { (o as Mesh).geometry?.dispose(); });
+      }
+      e.custom = new Group();
+      drawer.build(ob, e.custom, st);
+      e.customKey = key;
+      e.root.add(e.custom);
+    }
+    e.custom.visible = !this.display.showOnlyRender;
+  }
+
   extraSegments(ob: BObject): Vector3[] {
     const e = this.objects.get(ob.id);
+    if (e?.custom && e.root.visible) {
+      // pick lines of custom drawings
+      const out: Vector3[] = [];
+      e.root.updateMatrixWorld(true);
+      e.custom.traverse((o) => {
+        if (!o.userData.pick || !(o as LineSegments).geometry) return;
+        const pos = (o as LineSegments).geometry.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) out.push(new Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(o.matrixWorld));
+      });
+      return out;
+    }
+    if (e && !e.extras && e.wire && e.geom && !e.geom.src.faces.length && e.root.visible) {
+      // curves drawn as a wire
+      const wp = e.wire.geometry.getAttribute('position');
+      const out: Vector3[] = [];
+      for (let i = 0; i < wp.count; i++) out.push(new Vector3(wp.getX(i), wp.getY(i), wp.getZ(i)).applyMatrix4(e.root.matrix));
+      return out;
+    }
     if (!e || !e.extras || !e.root.visible) return [];
     const pos = e.extras.geometry.getAttribute('position');
     const out: Vector3[] = [];

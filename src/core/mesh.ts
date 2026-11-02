@@ -28,6 +28,13 @@ export function ensureArrays(m: MeshData): void {
   if (m.faceMat.length !== nf) m.faceMat = resize(m.faceMat, nf, 0);
   if (m.activeFace >= nf) m.activeFace = -1;
   if (m.vcol && m.vcol.length !== nv) m.vcol = resize(m.vcol, nv, [1, 1, 1] as [number, number, number]);
+  if (m.seam && m.seam.length !== ne) m.seam = resize(m.seam, ne, false);
+  // UV maps stay parallel to the faces (new faces get zero UVs until the UV transfer of uvtransfer.ts runs)
+  if (m.uvLayers) for (const l of m.uvLayers) {
+    if (l.uv.length > nf) l.uv.length = nf;
+    for (let f = l.uv.length; f < nf; f++) l.uv.push(new Array(m.faces[f].length * 2).fill(0));
+    if (l.flag && l.flag.length > nf) l.flag.length = nf;
+  }
   // hidden flags are dropped (everything revealed) when the topology no longer matches
   if (m.vhide && (m.vhide.length !== nv || (m.fhide?.length ?? -1) !== nf)) { delete m.vhide; delete m.fhide; }
 }
@@ -113,9 +120,11 @@ function resize<T>(arr: T[], n: number, fill: T): T[] {
 export function rebuildEdges(m: MeshData): void {
   const oldSel = new Map<string, boolean>();
   m.edges.forEach((e, i) => oldSel.set(edgeKey(e[0], e[1]), !!m.esel[i]));
+  const oldSeam = m.seam ? new Set(m.edges.filter((_, i) => m.seam![i]).map((e) => edgeKey(e[0], e[1]))) : null;
   const seen = new Set<string>();
   const edges: [number, number][] = [];
   const esel: boolean[] = [];
+  const seam: boolean[] | null = oldSeam ? [] : null;
   const add = (a: number, b: number) => {
     if (a === b) return;
     const k = edgeKey(a, b);
@@ -123,12 +132,14 @@ export function rebuildEdges(m: MeshData): void {
     seen.add(k);
     edges.push(a < b ? [a, b] : [b, a]);
     esel.push(oldSel.get(k) ?? false);
+    seam?.push(oldSeam!.has(k));
   };
   for (const f of m.faces) for (let i = 0; i < f.length; i++) add(f[i], f[(i + 1) % f.length]);
   const nv = m.verts.length;
   for (const e of m.edges) if (e[0] < nv && e[1] < nv) add(e[0], e[1]);
   m.edges = edges;
   m.esel = esel;
+  if (seam) m.seam = seam;
 }
 
 /** Edges that belong to at least one face. */
@@ -305,14 +316,16 @@ export function removeVerts(m: MeshData, remove: boolean[]): void {
   m.faces = m.faces.map((f) => f.map((v) => remap[v]));
   const edges: [number, number][] = [];
   const esel: boolean[] = [];
+  const seam: boolean[] | null = m.seam ? [] : null;
   m.edges.forEach((e, i) => {
     const a = remap[e[0]], b = remap[e[1]];
-    if (a >= 0 && b >= 0) { edges.push([a, b]); esel.push(!!m.esel[i]); }
+    if (a >= 0 && b >= 0) { edges.push([a, b]); esel.push(!!m.esel[i]); seam?.push(!!m.seam?.[i]); }
   });
   m.verts = verts;
   m.vsel = vsel;
   m.edges = edges;
   m.esel = esel;
+  if (seam) m.seam = seam;
   ensureArrays(m);
 }
 
@@ -325,6 +338,7 @@ export function filterFaces(m: MeshData, keep: boolean[]): void {
     if (i === m.activeFace) active = faces.length;
     faces.push(f); fs.push(!!m.fsel[i]); sm.push(!!m.faceSmooth[i]); mt.push(m.faceMat[i] ?? 0);
   });
+  if (m.uvLayers) for (const l of m.uvLayers) { l.uv = l.uv.filter((_, i) => keep[i]); if (l.flag) l.flag = l.flag.filter((_, i) => keep[i]); }
   m.faces = faces; m.fsel = fs; m.faceSmooth = sm; m.faceMat = mt; m.activeFace = active;
 }
 

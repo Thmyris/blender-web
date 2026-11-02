@@ -7,6 +7,7 @@ import type {
   Scene, TextBlock, TextureData, TextureSlot, ToolSettings, Vec3, WorldData, DataCollection, LampType,
 } from './types';
 import { createMeshData, primCube, selectAllMesh } from './mesh';
+import { primitiveUVs, setInitialUVs } from './uvdata';
 
 export const BLENDER_VERSION = '2.79';
 export const BLENDER_VERSION_FULL = '2.79b';
@@ -186,7 +187,7 @@ export function createText(doc: Doc, name = 'Text', body = ''): TextBlock {
 export function emptyDoc(): Doc {
   return {
     version: 1, filename: '', scenes: [], activeScene: '', objects: {}, meshes: {}, cameras: {}, lamps: {},
-    materials: {}, textures: {}, worlds: {}, texts: {}, idCounter: 0,
+    materials: {}, textures: {}, worlds: {}, texts: {}, armatures: {}, lattices: {}, curves: {}, metaballs: {}, fonts: {}, idCounter: 0,
   };
 }
 
@@ -202,6 +203,7 @@ export function createStartupDoc(): Doc {
   const mat = createMaterial(doc, 'Material');
   const cubeGeom = primCube(1);
   const mesh = createMesh(doc, 'Cube', cubeGeom.verts, cubeGeom.faces);
+  setInitialUVs(mesh, primitiveUVs('Cube', cubeGeom.verts, cubeGeom.faces));
   mesh.materials = [mat.id];
   selectAllMesh(mesh, true);
   const cube = createObject(doc, 'MESH', 'Cube', mesh.id);
@@ -249,6 +251,10 @@ export function dataCollectionFor(type: ObjectType): DataCollection | null {
     case 'MESH': return 'meshes';
     case 'CAMERA': return 'cameras';
     case 'LAMP': return 'lamps';
+    case 'ARMATURE': return 'armatures';
+    case 'LATTICE': return 'lattices';
+    case 'CURVE': case 'SURFACE': return 'curves';
+    case 'META': return 'metaballs';
     default: return null;
   }
 }
@@ -258,6 +264,11 @@ export function dataUsers(doc: Doc, coll: DataCollection, id: string): number {
   let n = 0;
   if (coll === 'materials') {
     for (const m of Object.values(doc.meshes)) n += m.materials.filter((x) => x === id).length;
+    // curves, surfaces, metaballs and text objects
+    for (const c of [...Object.values(doc.curves ?? {}), ...Object.values(doc.metaballs ?? {})]) n += c.materials.filter((x) => x === id).length;
+    for (const ob of Object.values(doc.objects)) if (ob.text?.materials) n += ob.text.materials.filter((x) => x === id).length;
+  } else if (coll === 'fonts') {
+    for (const ob of Object.values(doc.objects)) { const t = ob.text; if (t && [t.font, t.fontBold, t.fontItalic, t.fontBoldItalic].includes(id)) n++; }
   } else if (coll === 'worlds') {
     for (const s of doc.scenes) if (s.world === id) n++;
   } else if (coll === 'textures') {
@@ -277,8 +288,8 @@ export function purgeOrphans(doc: Doc): void {
   let changed = true;
   while (changed) {
     changed = false;
-    for (const coll of ['objects', 'meshes', 'cameras', 'lamps', 'materials', 'textures', 'worlds'] as DataCollection[]) {
-      const map = doc[coll] as Record<string, unknown>;
+    for (const coll of ['objects', 'meshes', 'cameras', 'lamps', 'materials', 'textures', 'worlds', 'armatures', 'lattices', 'curves', 'metaballs', 'fonts'] as DataCollection[]) {
+      const map = (doc[coll] ?? {}) as Record<string, unknown>;
       for (const id of Object.keys(map)) {
         if (dataUsers(doc, coll, id) === 0) { delete map[id]; changed = true; }
       }
@@ -319,10 +330,24 @@ export function setBasisFromMatrix(ob: BObject, m: Matrix4): void {
   ];
 }
 
+/**
+ * Resolver of bone parents (installed by armature.ts): world matrix of the tail of `bone` of the
+ * armature object `parent`, for objects parented with Ctrl+P > Bone.
+ */
+export const parentResolvers: { bone?: (doc: Doc, parent: BObject, bone: string, worldOf: (o: BObject) => Matrix4) => Matrix4 | null } = {};
+
 /** World matrix including parenting and constraints. Results are cached per evaluation pass. */
+/**
+ * Hooks that replace an object's evaluated world matrix (the rigid body simulation, src/sim).
+ * Return null to keep the regular result. Caches with `noOverrides` skip them.
+ */
+export const worldMatrixOverrides: ((ob: BObject, doc: Doc) => Matrix4 | null)[] = [];
+
 export class MatrixCache {
   private cache = new Map<string, Matrix4>();
   private evaluating = new Set<string>();
+  /** Ignore `worldMatrixOverrides` (used by simulations to read the unsimulated transforms). */
+  noOverrides = false;
   constructor(private doc: Doc) {}
 
   clear(): void { this.cache.clear(); }
@@ -331,11 +356,19 @@ export class MatrixCache {
     const hit = this.cache.get(ob.id);
     if (hit) return hit;
     if (this.evaluating.has(ob.id)) return basisMatrix(ob); // dependency cycle guard
+    if (!this.noOverrides) {
+      for (const fn of worldMatrixOverrides) {
+        const o = fn(ob, this.doc);
+        if (o) { this.cache.set(ob.id, o); return o; }
+      }
+    }
     this.evaluating.add(ob.id);
     const m = basisMatrix(ob);
     const parent = ob.parent ? this.doc.objects[ob.parent] : null;
     if (parent) {
-      const pm = this.world(parent).clone().multiply(new Matrix4().fromArray(ob.parentInverse));
+      let pw = this.world(parent);
+      if (ob.parentBone && parent.type === 'ARMATURE' && parentResolvers.bone) pw = parentResolvers.bone(this.doc, parent, ob.parentBone, (o) => this.world(o)) ?? pw;
+      const pm = pw.clone().multiply(new Matrix4().fromArray(ob.parentInverse));
       m.premultiply(pm);
     }
     applyConstraints(this.doc, ob, m, this);

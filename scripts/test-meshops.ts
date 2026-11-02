@@ -9,6 +9,8 @@ import {
   polyNormal, cross, dot, length, sub, type SelectMode,
 } from '../src/core/mesh';
 import * as ops from '../src/core/meshops';
+import { bevelMesh } from '../src/core/bevel';
+import { primMonkey } from '../src/core/monkey';
 
 // ------------------------------------------------------------------ harness
 
@@ -1028,6 +1030,151 @@ test('modes param accepted for every select mode', () => {
     ops.selectLinked(m, mode);
     checkInvariants(m);
   }
+});
+
+// ------------------------------------------------------------------ bevel
+
+console.log('bevel');
+const allEdges = (m: MeshData) => { selectAllMesh(m, true); };
+test('bevel all cube edges, 1 segment: 24 verts, 26 faces, closed', () => {
+  const m = cube();
+  allEdges(m);
+  assert(bevelMesh(m, { offset: 0.2, segments: 1 }), 'bevelled');
+  eq(m.verts.length, 24, 'verts');
+  eq(m.faces.length, 26, 'faces');
+  checkInvariants(m, true);
+  eq(m.faces.filter((f) => f.length === 3).length, 8, 'corner triangles');
+});
+test('bevel all cube edges, 3 segments: closed quad patches', () => {
+  const m = cube();
+  allEdges(m);
+  bevelMesh(m, { offset: 0.2, segments: 3 });
+  eq(m.verts.length, 96, 'verts');
+  eq(m.faces.length, 98, 'faces');
+  checkInvariants(m, true);
+  // every corner vertex lies on the corner sphere (radius = offset)
+  for (const p of m.verts) {
+    const c = p.map((x) => Math.sign(x) * 0.8) as Vec3;
+    const d = sub(p, c).map((x, k) => (Math.abs(p[k]) > 0.8 + 1e-9 ? x : 0)) as Vec3;
+    assert(length(d) <= 0.2 + 1e-6, `vertex outside the rounded cube ${p}`);
+  }
+});
+test('bevel all cube edges, 2 and 4 segments stay closed', () => {
+  for (const s of [2, 4]) { const m = cube(); allEdges(m); bevelMesh(m, { offset: 0.3, segments: s }); checkInvariants(m, true); }
+});
+test('bevel one cube edge: pentagon ends', () => {
+  const m = cube();
+  selectEdges(m, [[0, 1]]);
+  bevelMesh(m, { offset: 0.25, segments: 1 });
+  eq(m.verts.length, 10, 'verts');
+  eq(m.faces.length, 7, 'faces');
+  eq(m.faces.filter((f) => f.length === 5).length, 2, 'pentagons');
+  checkInvariants(m, true);
+  eq(count(m.fsel), 1, 'strip selected');
+});
+test('bevel one cube edge, 4 segments: rounded ends merged into the end faces', () => {
+  const m = cube();
+  selectEdges(m, [[0, 1]]);
+  bevelMesh(m, { offset: 0.25, segments: 4 });
+  eq(m.faces.length, 10, 'faces');
+  checkInvariants(m, true);
+});
+test('bevel top loop of a cube (mitre corners), 1 and 3 segments', () => {
+  for (const s of [1, 3]) {
+    const m = cube();
+    selectEdges(m, [[4, 7], [7, 6], [6, 5], [5, 4]]);
+    bevelMesh(m, { offset: 0.2, segments: s });
+    eq(m.faces.length, 6 + 4 * s, `faces (${s})`);
+    checkInvariants(m, true);
+  }
+});
+test('bevel two edges meeting at a corner', () => {
+  const m = cube();
+  selectEdges(m, [[4, 7], [4, 5]]);
+  bevelMesh(m, { offset: 0.2, segments: 2 });
+  checkInvariants(m, true);
+});
+test('bevel clamps the offset to avoid overlap', () => {
+  const m = cube();
+  allEdges(m);
+  bevelMesh(m, { offset: 5, segments: 2, clampOverlap: true });
+  checkInvariants(m, true);
+  for (const p of m.verts) for (const x of p) assert(Math.abs(x) <= 1 + 1e-9, 'vertex escaped the cube');
+});
+test('bevel offset types', () => {
+  for (const t of ['WIDTH', 'DEPTH', 'PERCENT'] as const) {
+    const m = cube();
+    allEdges(m);
+    bevelMesh(m, { offset: t === 'PERCENT' ? 10 : 0.2, offsetType: t, segments: 2 });
+    checkInvariants(m, true);
+  }
+  const m = cube();
+  selectEdges(m, [[0, 1]]);
+  bevelMesh(m, { offset: Math.SQRT2 * 0.25, offsetType: 'WIDTH', segments: 1 });
+  assert(m.verts.some((p) => Math.abs(p[0] - 0.75) < 1e-6 && Math.abs(p[2] + 1) < 1e-6), 'width offset on the bottom face');
+  assert(m.verts.some((p) => Math.abs(p[0] - 1) < 1e-6 && Math.abs(p[2] + 0.75) < 1e-6), 'width offset on the side face');
+});
+test('vertex bevel cube corner: triangle, closed', () => {
+  const m = cube();
+  selectVerts(m, [4]);
+  bevelMesh(m, { offset: 0.3, segments: 1, vertexOnly: true });
+  eq(m.verts.length, 10, 'verts');
+  eq(m.faces.length, 7, 'faces');
+  checkInvariants(m, true);
+});
+test('vertex bevel all cube verts with 3 segments', () => {
+  const m = cube();
+  selectAll(m);
+  bevelMesh(m, { offset: 0.3, segments: 3, vertexOnly: true });
+  checkInvariants(m, true);
+});
+test('vertex bevel plane corners: rounded open corners', () => {
+  const m = plane();
+  selectAll(m);
+  bevelMesh(m, { offset: 0.3, segments: 4, vertexOnly: true });
+  eq(m.faces.length, 1, 'faces');
+  eq(m.verts.length, 20, 'verts');
+  checkInvariants(m);
+});
+test('bevel grid interior edge loop and boundary-touching loop', () => {
+  const m = grid(5, 5);
+  selectEdges(m, [[5, 6], [6, 7], [7, 8], [8, 9]]);
+  assert(bevelMesh(m, { offset: 0.1, segments: 2 }), 'bevelled');
+  checkInvariants(m);
+  const m2 = grid(4, 4);
+  selectEdges(m2, [[5, 6]]);
+  bevelMesh(m2, { offset: 0.1, segments: 1 });
+  checkInvariants(m2);
+});
+test('bevel cylinder rim', () => {
+  const m = cylinder(12);
+  const top = m.verts.map((p, i) => (p[2] > 0 ? i : -1)).filter((i) => i >= 0);
+  selectVerts(m, top);
+  flushSelection(m, 'VERT');
+  // only rim edges (cap edges are selected too, the cap is an n-gon so its edges are the rim)
+  bevelMesh(m, { offset: 0.1, segments: 3 });
+  checkInvariants(m, true);
+});
+
+// ------------------------------------------------------------------ monkey
+
+console.log('monkey');
+test('primMonkey: ~500 verts, quads, closed, mirror symmetric', () => {
+  const g = primMonkey(1);
+  const m = mk(g);
+  assert(m.verts.length > 450 && m.verts.length < 650, `vert count ${m.verts.length}`);
+  assert(m.faces.every((f) => f.length === 4), 'all quads');
+  checkInvariants(m, true);
+  const key = (p: Vec3) => p.map((x) => Math.round(x * 1e5)).join(',');
+  const set = new Set(m.verts.map(key));
+  for (const p of m.verts) assert(set.has(key([-p[0], p[1], p[2]])), 'mirror counterpart');
+  // every separate part is outward wound
+  const parts = ops.separateLoose(mk(g));
+  for (const part of parts) assert(volume(mk(part)) > 0, 'part wound outward');
+  const b = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (const p of m.verts) for (let k = 0; k < 3; k++) { b.min[k] = Math.min(b.min[k], p[k]); b.max[k] = Math.max(b.max[k], p[k]); }
+  assert(b.max[0] > 1.1 && b.max[0] < 1.5, `ear span ${b.max[0]}`);
+  assert(b.min[1] < -0.8, `face points -Y (${b.min[1]})`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

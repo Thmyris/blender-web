@@ -22,6 +22,7 @@ import { objectPanels } from './object';
 import { constraintPanels } from './constraints';
 import { modifierPanels } from './modifiers';
 import { dataPanels } from './data';
+import { hasMaterialSlots } from '../../core/matslots';
 import { materialPanels } from './material';
 import { texturePanels } from './texture';
 import { particlePanels, physicsPanels } from './physics';
@@ -42,6 +43,8 @@ interface ContextDef {
 const always = () => true;
 const hasOb = (o: BObject | null) => !!o;
 const isMesh = (o: BObject | null) => o?.type === 'MESH';
+/** Types with a modifier stack (meshes, curves, surfaces and text, like 2.79). */
+const hasModifiers = (o: BObject | null) => !!o && ['MESH', 'CURVE', 'SURFACE', 'FONT'].includes(o.type);
 
 /** Contexts in Blender 2.79's order. */
 const CONTEXTS: ContextDef[] = [
@@ -51,9 +54,9 @@ const CONTEXTS: ContextDef[] = [
   { id: 'WORLD', label: 'World', description: 'World', icon: () => 'WORLD', poll: always, panels: worldPanels },
   { id: 'OBJECT', label: 'Object', description: 'Object', icon: () => 'OBJECT_DATA', poll: hasOb, panels: objectPanels },
   { id: 'CONSTRAINT', label: 'Constraints', description: 'Object constraints', icon: () => 'CONSTRAINT', poll: hasOb, panels: constraintPanels },
-  { id: 'MODIFIER', label: 'Modifiers', description: 'Modifiers', icon: () => 'MODIFIER', poll: isMesh, panels: modifierPanels },
+  { id: 'MODIFIER', label: 'Modifiers', description: 'Modifiers', icon: () => 'MODIFIER', poll: hasModifiers, panels: modifierPanels },
   { id: 'DATA', label: 'Data', description: 'Object data', icon: (o) => objectDataIcon(o?.type ?? 'MESH'), poll: hasOb, panels: dataPanels },
-  { id: 'MATERIAL', label: 'Material', description: 'Material', icon: () => 'MATERIAL', poll: isMesh, panels: materialPanels },
+  { id: 'MATERIAL', label: 'Material', description: 'Material', icon: () => 'MATERIAL', poll: hasMaterialSlots, panels: materialPanels },
   { id: 'TEXTURE', label: 'Texture', description: 'Texture', icon: () => 'TEXTURE', poll: always, panels: texturePanels },
   { id: 'PARTICLES', label: 'Particles', description: 'Particle', icon: () => 'PARTICLES', poll: isMesh, panels: particlePanels },
   { id: 'PHYSICS', label: 'Physics', description: 'Physics', icon: () => 'PHYSICS', poll: hasOb, panels: physicsPanels },

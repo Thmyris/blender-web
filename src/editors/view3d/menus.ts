@@ -2,7 +2,9 @@
 
 import { app } from '../../app';
 import type { MenuItem } from '../../ui/menu';
+import { PARENT_TYPES } from '../../ops/common';
 import type { View3D } from './view3d';
+import { activeEditType } from './edittypes';
 
 const op = (label: string, id: string, props?: Record<string, unknown>, icon?: string): MenuItem => ({ label, op: id, props, icon });
 const sep: MenuItem = { type: 'separator' };
@@ -81,6 +83,8 @@ export function viewMenu(view: View3D): MenuItem[] {
 }
 
 export function selectMenu(): MenuItem[] {
+  const et = activeEditType();
+  if (et?.handler.selectMenu) return et.handler.selectMenu();
   if (app.mode === 'EDIT') {
     return [
       op('Border Select', 'view3d.select_border'),
@@ -156,6 +160,8 @@ export function meshAddItems(): MenuItem[] {
 const na = (label: string, icon: string): MenuItem => ({ label, icon, disabled: true, description: 'Not available in blender-web' });
 
 export function addMenu(): MenuItem[] {
+  const et = activeEditType();
+  if (et?.handler.addMenu) return et.handler.addMenu();
   if (app.mode === 'EDIT') return meshAddItems();
   return [
     sub('Mesh', meshAddItems(), 'OUTLINER_OB_MESH'),
@@ -257,6 +263,9 @@ export function parentMenu(): MenuItem[] {
     op('Object', 'object.parent_set', { type: 'OBJECT', keep_transform: false }),
     op('Object (Keep Transform)', 'object.parent_set', { type: 'OBJECT', keep_transform: true }),
     op('Object (Without Inverse)', 'object.parent_no_inverse_set'),
+    ...PARENT_TYPES.filter((t) => t.poll()).map((t): MenuItem => (t.sub
+      ? sub(t.label, t.sub.map((x) => op(x.label, 'object.parent_set', { type: t.id, ...x.props })))
+      : op(t.label, 'object.parent_set', { type: t.id }))),
   ];
 }
 
@@ -471,6 +480,9 @@ export function edgesMenu(): MenuItem[] {
     op('Loop Cut and Slide', 'mesh.loopcut_slide'),
     sep,
     op('Spin', 'mesh.spin'),
+    sep,
+    op('Mark Seam', 'mesh.mark_seam', { clear: false }),
+    op('Clear Seam', 'mesh.mark_seam', { clear: true }),
     sep,
     op('Select Sharp Edges', 'mesh.edges_select_sharp'),
   ];

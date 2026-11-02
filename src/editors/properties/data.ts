@@ -10,6 +10,7 @@ import {
 import { objectDataTemplate } from './data_template';
 import { cameraPanels } from './data_camera';
 import { lampPanels } from './data_lamp';
+import { uvMapsPanel } from './data_uv';
 
 function emptyList(l: Layout, rows: number, side: { icon: string; tip: string }[]): void {
   richList(l, { rows, items: () => [], active: () => -1, side: side.map((s) => ({ ...s, tip: `${s.tip} (not available in blender-web)`, disabled: () => true })) });
@@ -57,7 +58,7 @@ function meshPanels(): PanelDef[] {
       emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add shape key to the object' }, { icon: 'ZOOMOUT', tip: 'Remove shape key from the object' }, { icon: 'DOWNARROW_HLT', tip: 'Shape Key Specials' }]);
     },
   });
-  P.push({ id: 'data.uv_maps', label: 'UV Maps', draw: (l) => emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add UV Map' }, { icon: 'ZOOMOUT', tip: 'Remove UV Map' }]) });
+  P.push({ id: 'data.uv_maps', label: 'UV Maps', draw: (l) => uvMapsPanel(l) });
   P.push({ id: 'data.vertex_colors', label: 'Vertex Colors', draw: (l) => emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add vertex color layer' }, { icon: 'ZOOMOUT', tip: 'Remove vertex color layer' }]) });
 
   P.push({

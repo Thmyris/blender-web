@@ -7,7 +7,7 @@ import { h, trackDrag } from '../ui/dom';
 import { icon } from '../ui/icons';
 import { pulldown, showMenu, type MenuItem } from '../ui/menu';
 import type { Layout } from '../ui/layout';
-import { ANIMATABLE, evaluateFCurve, objectKeyFrames, sortKeys, KEYING_SETS } from '../core/anim';
+import { ANIMATABLE, evaluateFCurve, objectKeyFrames, sortKeys, KEYING_SETS, channelLabel } from '../core/anim';
 import type { BObject, FCurve, Interpolation, Keyframe } from '../core/types';
 import { confirmPopup } from '../ui/popup';
 
@@ -16,7 +16,7 @@ const CURVE_COL = ['#ff5050', '#50ff50', '#5080ff'];
 
 function fcurveLabel(fc: FCurve): string {
   const info = ANIMATABLE[fc.path];
-  return info?.size ? `${AXIS[fc.index]} ${info.label}` : info?.label ?? fc.path;
+  return info?.size ? `${AXIS[fc.index]} ${info.label}` : info?.label ?? channelLabel(fc.path, fc.index);
 }
 
 function animObjects(onlySelected: boolean): BObject[] {

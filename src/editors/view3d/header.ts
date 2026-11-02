@@ -6,6 +6,7 @@ import type { Layout, EnumItem } from '../../ui/layout';
 import { h } from '../../ui/dom';
 import type { View3D } from './view3d';
 import type { Shading } from './draw';
+import { hasEditType } from './edittypes';
 
 export const SHADING_ITEMS: EnumItem[] = [
   { id: 'RENDERED', label: 'Rendered', icon: 'RENDERED' },
@@ -46,7 +47,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   row.el.style.flex = '0 0 auto';
   // mode
   const ob = app.activeObject;
-  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' || m.id === 'SCULPT' || m.id === 'VERTEX_PAINT') && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
+  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' ? !(ob && (ob.type === 'MESH' || ob.type === 'FONT' || hasEditType(ob.type))) : (m.id === 'SCULPT' || m.id === 'VERTEX_PAINT') && ob?.type !== 'MESH') ? { ...m, disabled: true } : m));
   const modeEl = row.prop({
     kind: 'enum', name: 'Mode', items: modeItems, get: () => app.mode, undo: false,
     set: (v) => { void app.callOperator('object.mode_set', { mode: v }, { area: view.area }); },
@@ -79,7 +80,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   orientEl.style.flex = '0 0 auto';
   orientEl.style.width = '76px';
   // edit mode: select mode + occlude
-  if (app.mode === 'EDIT') {
+  if (app.mode === 'EDIT' && app.editMesh) {
     const sm = l.row(true);
     sm.el.style.flex = '0 0 auto';
     const names = ['Vertex select mode', 'Edge select mode', 'Face select mode'];

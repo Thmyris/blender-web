@@ -19,6 +19,8 @@ import { drawView3DHeader } from './header';
 import { startSculptStroke, sculptKey, sculptMenu } from './sculpt';
 import { startPaintStroke, vpaintKey, vpaintMenu, fillVertexColors } from './vpaint';
 import { textEditKey } from '../../core/text3d';
+import { activeEditType, editTypeHasSelection, editTypeSelectedPoints } from './edittypes';
+import { cyclesViewportDestroyed, cyclesViewportOverlay, cyclesViewportUpdate } from '../../render/cycles/viewport';
 
 export interface OverlayShape {
   kind: 'rect' | 'circle' | 'lasso' | 'cross';
@@ -119,6 +121,7 @@ export class View3D extends Editor {
   override destroy(): void {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    cyclesViewportDestroyed(this);
     this.renderer?.dispose();
     this.saveState();
   }
@@ -158,8 +161,10 @@ export class View3D extends Editor {
     const t0 = performance.now();
     try {
       this.renderer.sync(this.localView);
+      cyclesViewportUpdate(this);
       this.renderer.render(this.localView);
       drawOverlay(this);
+      cyclesViewportOverlay(this);
     } catch (err) {
       console.error('viewport draw', err);
     }
@@ -269,7 +274,8 @@ export class View3D extends Editor {
       pulldown({ label: 'View', items: () => viewMenu(this) }, area, true),
       pulldown({ label: 'Select', items: () => selectMenu() }, area, true),
       pulldown({ label: 'Add', items: () => addMenu() }, area, true),
-      app.mode === 'EDIT' ? pulldown({ label: 'Mesh', items: () => meshMenu() }, area, true)
+      activeEditType()?.handler.menu ? pulldown({ label: activeEditType()!.handler.menuLabel ?? 'Edit', items: () => activeEditType()?.handler.menu?.() ?? [] }, area, true)
+      : app.mode === 'EDIT' ? pulldown({ label: 'Mesh', items: () => meshMenu() }, area, true)
         : app.mode === 'SCULPT' ? pulldown({ label: 'Sculpt', items: () => sculptMenu() }, area, true)
           : app.mode === 'VERTEX_PAINT' ? pulldown({ label: 'Paint', items: () => vpaintMenu() }, area, true)
           : pulldown({ label: 'Object', items: () => objectMenu() }, area, true),
@@ -280,6 +286,8 @@ export class View3D extends Editor {
   override headerMenuItems() { return []; }
 
   override onKey(e: KeyboardEvent): boolean {
+    const et = activeEditType();
+    if (et?.handler.key?.(this, et.ob, e)) return true;
     if (app.mode === 'SCULPT') return sculptKey(this, e);
     const eo = app.editObj;
     if (app.mode === 'EDIT' && eo?.type === 'FONT') {
@@ -313,7 +321,7 @@ export class View3D extends Editor {
   private get actionButton(): number { return app.prefs.selectMouse === 'RIGHT' ? 0 : 2; }
 
   private onHover(e: PointerEvent): void {
-    if (app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') { this.brushPos = this.local(e); this.requestRender(); }
+    if (app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT' || activeEditType()?.handler.trackBrush) { this.brushPos = this.local(e); this.requestRender(); }
     if (app.modal || e.buttons) return;
     const p = this.local(e);
     const hit = this.display.manipulator && this.renderer ? manipulatorHit(this, p.x, p.y) : null;
@@ -331,6 +339,9 @@ export class View3D extends Editor {
       this.navigateDrag(e, emulate);
       return;
     }
+    const et = activeEditType();
+    if (et?.handler.pointerDown && (e.button === this.actionButton || e.button === this.selectButton)
+      && et.handler.pointerDown(this, et.ob, e, e.button === this.actionButton ? 'ACTION' : 'SELECT')) { e.preventDefault(); return; }
     if (app.mode === 'SCULPT' && e.button === this.actionButton) {
       e.preventDefault();
       startSculptStroke(this, e);
@@ -365,7 +376,7 @@ export class View3D extends Editor {
     if (e.button === this.selectButton) {
       e.preventDefault();
       const extend = e.shiftKey;
-      if (app.mode === 'EDIT') {
+      if (app.mode === 'EDIT' || et) {
         if (e.altKey) { if (loopSelect(this, p.x, p.y, extend)) app.pushUndo('Loop Select'); return; }
         const ok = clickSelectEdit(this, p.x, p.y, extend);
         if (ok) app.pushUndo('Select');
@@ -387,7 +398,7 @@ export class View3D extends Editor {
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < app.prefs.dragThreshold + 3) return;
       cleanup();
       if (app.modal) return;
-      const valid = app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
+      const valid = app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) || editTypeHasSelection() : app.selectedObjects().length > 0;
       if (!valid) return;
       startTransform({ mode: 'TRANSLATION', view: this, mouse: this.local({ clientX: sx, clientY: sy }), releaseConfirm: true });
       // feed the current position immediately
@@ -456,6 +467,8 @@ export class View3D extends Editor {
 
   /** Centre of the current selection in world space. */
   selectionCenter(): Vector3 | null {
+    const etPts = editTypeSelectedPoints();
+    if (etPts) return etPts.length ? etPts.reduce((a, p) => a.add(p), new Vector3()).multiplyScalar(1 / etPts.length) : null;
     const md = app.editMesh, ob = app.editObj;
     if (md && ob) {
       const m = app.matrices.world(ob);
@@ -475,7 +488,9 @@ export class View3D extends Editor {
   boundsOf(selectedOnly: boolean): { center: Vector3; radius: number } | null {
     const pts: Vector3[] = [];
     const md = app.editMesh, eob = app.editObj;
-    if (selectedOnly && md && eob) {
+    const etPts = selectedOnly ? editTypeSelectedPoints() : null;
+    if (etPts) pts.push(...etPts);
+    else if (selectedOnly && md && eob) {
       const m = app.matrices.world(eob);
       md.verts.forEach((v, i) => { if (md.vsel[i]) pts.push(new Vector3(...v).applyMatrix4(m)); });
     } else {

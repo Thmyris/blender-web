@@ -5,7 +5,15 @@ export type Vec3 = [number, number, number];
 export type Color3 = [number, number, number];
 export type Color4 = [number, number, number, number];
 
-export type ObjectType = 'MESH' | 'CAMERA' | 'LAMP' | 'EMPTY' | 'FONT';
+import type { ActionData, AnimData, MediaData, MovieClipData, NodeTree, SequenceEditorData } from './edtypes';
+import type { CurveData, MetaBallData, VFontData } from './curvetypes';
+export type { CurveData, MetaBallData, VFontData } from './curvetypes';
+export type * from './edtypes';
+import type { CollisionSettings, FieldSettings, ParticleSettingsExt, RigidBodyConstraint, RigidBodyObject, RigidBodyWorld } from '../sim/types';
+import type { CyclesLampSettings, CyclesMaterialSettings, CyclesSceneSettings, CyclesWorldSettings } from '../render/cycles/types';
+export type * from '../render/cycles/types';
+
+export type ObjectType = 'MESH' | 'CAMERA' | 'LAMP' | 'EMPTY' | 'FONT' | 'ARMATURE' | 'LATTICE' | 'CURVE' | 'SURFACE' | 'META';
 export type RotationMode = 'XYZ' | 'XZY' | 'YXZ' | 'YZX' | 'ZXY' | 'ZYX';
 export type DrawType = 'BOUNDS' | 'WIRE' | 'SOLID' | 'TEXTURED';
 export type EmptyDrawType = 'PLAIN_AXES' | 'ARROWS' | 'SINGLE_ARROW' | 'CIRCLE' | 'CUBE' | 'SPHERE' | 'CONE';
@@ -31,6 +39,19 @@ export interface MeshData {
   /** Vertex colours (linear RGB per vertex), created by Vertex Paint. */
   vcol?: Color3[];
   fhide?: boolean[];
+  /** UV maps (Data tab > UV Maps). Absent or empty when the mesh has no UVs. */
+  uvLayers?: MeshUVLayer[];
+  /** Index of the active UV map (the one edited in the UV/Image Editor). */
+  uvActive?: number;
+  /** Index of the UV map used for rendering (camera icon in the UV Maps list). */
+  uvActiveRender?: number;
+  /** UV seams, parallel to `edges` (Ctrl+E > Mark Seam). Absent when there are none. */
+  seam?: boolean[];
+  /**
+   * Deform-vertex weights (vertex groups), one list per vertex of [group index, weight] pairs. Group
+   * indices refer to the owning object's `vertexGroups`. Absent when the mesh has no weights.
+   */
+  dvert?: [number, number][][];
   materials: (string | null)[];
   autoSmooth: boolean;
   autoSmoothAngle: number;
@@ -88,6 +109,8 @@ export interface LampData {
   areaSize: number;
   areaSizeY: number;
   sunSize?: number;
+  /** Cycles lamp settings (src/render/cycles); derived from the Blender Internal ones when absent. */
+  cycles?: Partial<CyclesLampSettings>;
   fakeUser: boolean;
 }
 
@@ -97,6 +120,8 @@ export interface TextureData {
   type: 'NONE' | 'IMAGE' | 'CLOUDS' | 'BLEND' | 'WOOD' | 'MARBLE' | 'VORONOI' | 'MAGIC' | 'STUCCI' | 'NOISE';
   imageData: string | null;  // data URL for IMAGE textures
   imageName: string;
+  /** Image datablock (`doc.images`) used by IMAGE textures; takes precedence over `imageData`. */
+  image?: string | null;
   noiseScale: number;
   noiseDepth: number;
   noiseBasis: 'BLENDER_ORIGINAL' | 'ORIGINAL_PERLIN' | 'IMPROVED_PERLIN';
@@ -127,6 +152,8 @@ export interface TextureSlot {
   alphaFactor: number;
   blendType: 'MIX' | 'ADD' | 'SUBTRACT' | 'MULTIPLY' | 'SCREEN';
   useRgbToIntensity: boolean;
+  /** UV map name used when `textureCoords` is 'UV' (empty: the active render UV map). */
+  uvLayer?: string;
   color: Color3;
 }
 
@@ -153,11 +180,18 @@ export interface MaterialData {
   useMirror: boolean;
   /** Use vertex colours as the diffuse colour (Options > Vertex Color Paint). */
   useVertexColorPaint?: boolean;
+  /** Material node tree (Blender Internal shader nodes), used when `useNodes` is on. */
+  useNodes?: boolean;
+  nodeTree?: NodeTree | null;
   receiveShadows: boolean;
   castShadows: boolean;
   previewType: 'FLAT' | 'SPHERE' | 'CUBE' | 'MONKEY' | 'HAIR' | 'SPHERE_A';
   textureSlots: (TextureSlot | null)[];
   activeTextureIndex: number;
+  /** Active texture paint slot (Texture Paint > Slots). */
+  paintActiveSlot?: number;
+  /** Cycles material settings and surface shader (src/render/cycles); derived from Blender Internal when absent. */
+  cycles?: Partial<CyclesMaterialSettings>;
   fakeUser: boolean;
 }
 
@@ -181,6 +215,8 @@ export interface WorldData {
   mistDepth: number;
   mistIntensity: number;
   useStars: boolean;
+  /** Cycles world settings (src/render/cycles); derived from Blender Internal when absent. */
+  cycles?: Partial<CyclesWorldSettings>;
   fakeUser: boolean;
 }
 
@@ -195,7 +231,9 @@ export interface TextBlock {
 
 export type ModifierType =
   | 'SUBSURF' | 'MIRROR' | 'ARRAY' | 'SOLIDIFY' | 'TRIANGULATE' | 'SMOOTH'
-  | 'WAVE' | 'DISPLACE' | 'SIMPLE_DEFORM' | 'CAST' | 'DECIMATE' | 'EDGE_SPLIT' | 'WIREFRAME' | 'BEVEL' | 'SCREW' | 'BUILD';
+  | 'WAVE' | 'DISPLACE' | 'SIMPLE_DEFORM' | 'CAST' | 'DECIMATE' | 'EDGE_SPLIT' | 'WIREFRAME' | 'BEVEL' | 'SCREW' | 'BUILD'
+  | 'ARMATURE' | 'LATTICE' | 'HOOK' | 'MASK' | 'VERTEX_WEIGHT_EDIT' | 'VERTEX_WEIGHT_MIX' | 'VERTEX_WEIGHT_PROXIMITY'
+  | 'CLOTH' | 'SOFT_BODY' | 'COLLISION' | 'EXPLODE';
 
 export interface Modifier {
   type: ModifierType;
@@ -268,6 +306,27 @@ export interface TextData {
   offsetY: number;
   /** Cursor position while editing. */
   cursor: number;
+  /** Selection start while editing (Shift+arrows); equal to `cursor` when nothing is selected. */
+  selStart?: number;
+  /** Per-character style flags (1 bold, 2 italic, 4 underline, 8 small caps) and material slot. */
+  charFormat?: number[];
+  charMaterial?: number[];
+  /** Style used for newly typed characters (bpy: edit_format). */
+  editFormat?: number;
+  /** Material slots of the text (bpy: the text curve's materials). */
+  materials?: (string | null)[];
+  /** VectorFont ids (null = the built-in Bfont). */
+  font?: string | null;
+  fontBold?: string | null;
+  fontItalic?: string | null;
+  fontBoldItalic?: string | null;
+  underlinePosition?: number;
+  underlineHeight?: number;
+  smallCapsScale?: number;
+  spaceCharacter?: number;
+  spaceWord?: number;
+  /** Curve object the text follows (Text on Curve). */
+  followCurve?: string | null;
 }
 
 export interface BObject {
@@ -314,9 +373,134 @@ export interface BObject {
   activeParticleSystem?: number;
   /** Text settings (FONT objects only). */
   text?: TextData;
+  /** Active action (id in doc.actions); its F-Curves are mirrored in `fcurves`. */
+  action?: string | null;
+  /** NLA tracks and action blending. */
+  animData?: AnimData;
+  /** Vertex groups (names; the weights live in the mesh's `dvert`). */
+  vertexGroups?: VertexGroup[];
+  activeVertexGroup?: number;
+  /** Pose of an ARMATURE object: pose bones by bone name. */
+  pose?: Record<string, PoseBone>;
+  /** Bone of the parent armature this object is parented to (Ctrl+P > Bone). */
+  parentBone?: string;
+  /** Physics (src/sim): rigid body, rigid body constraint, force field and collision settings. */
+  rigidBody?: RigidBodyObject | null;
+  rigidBodyConstraint?: RigidBodyConstraint | null;
+  field?: FieldSettings | null;
+  collision?: CollisionSettings | null;
 }
 
-export interface ParticleSystem {
+// ---------------------------------------------------------------- vertex groups, armatures, lattices
+
+export interface VertexGroup {
+  name: string;
+  lockWeight: boolean;
+}
+
+export type BoneRotationMode = 'QUATERNION' | 'XYZ' | 'XZY' | 'YXZ' | 'YZX' | 'ZXY' | 'ZYX' | 'AXIS_ANGLE';
+
+/** Rest bone of an armature (edit bone data), in armature space. */
+export interface Bone {
+  name: string;
+  head: Vec3;
+  tail: Vec3;
+  roll: number;
+  /** Parent bone name. */
+  parent: string | null;
+  useConnect: boolean;
+  useDeform: boolean;
+  useInheritRotation: boolean;
+  useInheritScale: boolean;
+  useLocalLocation: boolean;
+  useEnvelopeMultiply: boolean;
+  envelopeDistance: number;
+  envelopeWeight: number;
+  headRadius: number;
+  tailRadius: number;
+  bboneSegments: number;
+  bboneX: number;
+  bboneZ: number;
+  /** 32 bone layers. */
+  layers: boolean[];
+  hide: boolean;
+  hideSelect: boolean;
+  select: boolean;
+  selectHead: boolean;
+  selectTail: boolean;
+}
+
+/** Pose channel of a bone (ob.pose.bones["name"]). */
+export interface PoseBone {
+  location: Vec3;
+  /** (w, x, y, z) like Blender. */
+  rotationQuaternion: [number, number, number, number];
+  rotationEuler: Vec3;
+  /** (angle, x, y, z). */
+  rotationAxisAngle: [number, number, number, number];
+  rotationMode: BoneRotationMode;
+  scale: Vec3;
+  lockLocation: [boolean, boolean, boolean];
+  lockRotation: [boolean, boolean, boolean];
+  lockScale: [boolean, boolean, boolean];
+  constraints: BoneConstraint[];
+  ikStretch: number;
+}
+
+export type BoneConstraintType = 'IK' | 'COPY_LOCATION' | 'COPY_ROTATION' | 'DAMPED_TRACK' | 'LIMIT_ROTATION';
+
+/** Bone constraint (Bone Constraints tab). Targets are objects; armature targets may name a bone (subtarget). */
+export interface BoneConstraint {
+  type: BoneConstraintType;
+  name: string;
+  mute: boolean;
+  showExpanded: boolean;
+  influence: number;
+  target: string | null;
+  subtarget: string;
+  [key: string]: unknown;
+}
+
+export interface ArmatureData {
+  id: string;
+  name: string;
+  bones: Bone[];
+  activeBone: string | null;
+  drawType: 'OCTAHEDRAL' | 'STICK' | 'BBONE' | 'ENVELOPE' | 'WIRE';
+  showNames: boolean;
+  showAxes: boolean;
+  showGroupColors: boolean;
+  showBoneCustomShapes: boolean;
+  useMirrorX: boolean;
+  useDeformPreserveVolume: boolean;
+  /** 32 visible armature layers. */
+  layers: boolean[];
+  layersProtected: boolean[];
+  posePosition: 'POSE' | 'REST';
+  fakeUser: boolean;
+}
+
+export type LatticeInterpolation = 'KEY_LINEAR' | 'KEY_CARDINAL' | 'KEY_BSPLINE';
+
+export interface LatticeData {
+  id: string;
+  name: string;
+  pointsU: number;
+  pointsV: number;
+  pointsW: number;
+  interpolationU: LatticeInterpolation;
+  interpolationV: LatticeInterpolation;
+  interpolationW: LatticeInterpolation;
+  useOutside: boolean;
+  /** Point positions (u fastest, then v, then w), in lattice object space. */
+  points: Vec3[];
+  /** Point selection (edit mode). */
+  select: boolean[];
+  vertexGroup: string;
+  fakeUser: boolean;
+}
+
+export interface ParticleSystem extends ParticleSettingsExt {
   name: string;
   count: number;
   frameStart: number;
@@ -363,9 +547,31 @@ export interface VertexPaintSettings {
   blend: 'MIX' | 'ADD' | 'SUB' | 'MUL' | 'LIGHTEN' | 'DARKEN' | 'BLUR';
 }
 
+export interface WeightPaintSettings {
+  weight: number;
+  radius: number;
+  strength: number;
+  blend: 'MIX' | 'ADD' | 'SUB' | 'MUL' | 'BLUR' | 'LIGHTEN' | 'DARKEN';
+  falloff: 'SMOOTH' | 'SPHERE' | 'ROOT' | 'SHARP' | 'LINEAR' | 'CONSTANT';
+  useFrontFacesOnly: boolean;
+  useAccumulate: boolean;
+}
+
 export interface ToolSettings {
   sculpt?: SculptSettings;
   vpaint?: VertexPaintSettings;
+  /** Weight Paint brush and options. */
+  wpaint?: WeightPaintSettings;
+  /** Weight used by Assign in edit mode (Vertex Groups panel). */
+  vertexGroupWeight?: number;
+  useAutoNormalize?: boolean;
+  useMultipaint?: boolean;
+  /** Weight Paint X-mirror (Options > X Mirror). */
+  useWeightPaintMirrorX?: boolean;
+  /** Texture Paint brush settings. */
+  imagePaint?: ImagePaintSettings;
+  /** UV/Image Editor tool settings (UV select mode, sticky selection, sync selection). */
+  uvEdit?: UVEditSettings;
   meshSelectMode: [boolean, boolean, boolean];
   pivotPoint: PivotPoint;
   usePivotPointAlign: boolean;
@@ -455,6 +661,15 @@ export interface Scene {
   syncMode: 'NONE' | 'FRAME_DROP' | 'AUDIO_SYNC';
   keyingSet: string;
   fakeUser: boolean;
+  /** Compositing node tree (used when `useNodes` is on). */
+  useNodes?: boolean;
+  nodeTree?: NodeTree | null;
+  /** Video sequence editor strips. */
+  sequenceEditor?: SequenceEditorData | null;
+  /** Rigid Body World (src/sim). */
+  rigidBodyWorld?: RigidBodyWorld | null;
+  /** Cycles render settings (scene.cycles, src/render/cycles); defaults are filled in on use. */
+  cycles?: Partial<CyclesSceneSettings>;
 }
 
 export interface Doc {
@@ -470,8 +685,87 @@ export interface Doc {
   textures: Record<string, TextureData>;
   worlds: Record<string, WorldData>;
   texts: Record<string, TextBlock>;
+  /** Image datablocks (UV/Image Editor, image textures, texture paint). Absent in older files. */
+  images?: Record<string, BImage>;
+  armatures: Record<string, ArmatureData>;
+  lattices: Record<string, LatticeData>;
+  curves: Record<string, CurveData>;
+  metaballs: Record<string, MetaBallData>;
+  fonts: Record<string, VFontData>;
+  /** Actions (reusable sets of F-Curves), media files (movies, images, sounds) and movie clips. */
+  actions?: Record<string, ActionData>;
+  media?: Record<string, MediaData>;
+  clips?: Record<string, MovieClipData>;
   /** Monotonic counter for id generation. */
   idCounter: number;
 }
 
-export type DataCollection = 'objects' | 'meshes' | 'cameras' | 'lamps' | 'materials' | 'textures' | 'worlds' | 'texts';
+export type DataCollection = 'objects' | 'meshes' | 'cameras' | 'lamps' | 'materials' | 'textures' | 'worlds' | 'texts' | 'armatures' | 'lattices' | 'curves' | 'metaballs' | 'fonts';
+
+// ---------------------------------------------------------------- UV maps, images, texture paint
+
+/** A UV map: per-face-corner coordinates. `uv[f]` is `[u0, v0, u1, v1, ...]` for the corners of `faces[f]`. */
+export interface MeshUVLayer {
+  name: string;
+  uv: number[][];
+  /**
+   * Per-corner flags parallel to `uv` (one number per corner): bit 1 = selected in the UV editor,
+   * bit 2 = pinned. Optional; consumers must tolerate missing or short arrays.
+   */
+  flag?: number[][];
+}
+
+/** An image datablock (bpy.types.Image). Pixels are stored as a PNG data URL. */
+export interface BImage {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  source: 'GENERATED' | 'FILE';
+  generatedType: 'BLANK' | 'UV_GRID' | 'COLOR_GRID';
+  /** Generated fill colour (RGBA, display space). */
+  color: Color4;
+  useAlpha: boolean;
+  /** PNG/JPEG data URL of the pixels (null for an image that failed to load). */
+  data: string | null;
+  filepath: string;
+  /** Packed into the .blend (always true for generated / painted images in blender-web). */
+  packed: boolean;
+  fakeUser: boolean;
+}
+
+export type ImagePaintBrush = 'DRAW' | 'SOFTEN' | 'SMEAR' | 'CLONE' | 'FILL';
+export type ImagePaintBlend = 'MIX' | 'ADD' | 'SUB' | 'MUL' | 'LIGHTEN' | 'DARKEN' | 'ERASE_ALPHA' | 'ADD_ALPHA';
+
+export interface ImagePaintSettings {
+  brush: ImagePaintBrush;
+  /** Paint colour (display space RGB). */
+  color: Color3;
+  secondaryColor: Color3;
+  /** Radius in screen pixels. */
+  radius: number;
+  strength: number;
+  blend: ImagePaintBlend;
+  falloff: 'SMOOTH' | 'SPHERE' | 'ROOT' | 'SHARP' | 'LINEAR' | 'CONSTANT';
+  spacing: number;
+  /** Clone brush: source image (null = same image) and offset in pixels (image editor) . */
+  cloneImage?: string | null;
+  /** Fill brush threshold (0..1 colour distance). */
+  fillThreshold: number;
+  /** 3D view: only paint faces facing the view; occlude hidden surfaces. */
+  useOcclude: boolean;
+  useBackfaceCulling: boolean;
+}
+
+export interface UVEditSettings {
+  selectMode: 'VERTEX' | 'EDGE' | 'FACE' | 'ISLAND';
+  stickyMode: 'DISABLED' | 'SHARED_LOCATION' | 'SHARED_VERTEX';
+  useSync: boolean;
+  /** Snap to pixels while transforming with Ctrl. */
+  snapToPixels?: boolean;
+  /** Pivot point in the UV editor. */
+  pivot: 'BOUNDING_BOX_CENTER' | 'MEDIAN_POINT' | 'CURSOR' | 'INDIVIDUAL_ORIGINS';
+  /** 2D cursor in UV space. */
+  cursor: [number, number];
+  proportional?: boolean;
+}

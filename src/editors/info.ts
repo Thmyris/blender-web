@@ -185,7 +185,7 @@ export class InfoEditor extends Editor {
     sc.operator('scene.delete', { iconOnly: true, icon: 'X' });
     // render engine
     const eng = l.prop({
-      kind: 'enum', name: 'Engine', items: [{ id: 'BLENDER_RENDER', label: 'Blender Render' }, { id: 'BLENDER_GAME', label: 'Blender Game', disabled: true, description: 'Not available in blender-web' }, { id: 'CYCLES', label: 'Cycles Render', disabled: true, description: 'Not available in blender-web' }],
+      kind: 'enum', name: 'Engine', items: [{ id: 'BLENDER_RENDER', label: 'Blender Render' }, { id: 'BLENDER_GAME', label: 'Blender Game', disabled: true, description: 'Not available in blender-web' }, { id: 'CYCLES', label: 'Cycles Render', description: 'Cycles Render Engine (a progressive WebGL 2 path tracer)' }],
       get: () => app.scene.render.engine, set: (v) => { app.scene.render.engine = v as never; }, description: 'Engine to use for rendering',
     }, { noLabel: true });
     eng.style.flex = '0 0 130px';

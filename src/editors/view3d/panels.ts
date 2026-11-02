@@ -13,6 +13,7 @@ import type { View3D } from './view3d';
 import { ORIENT_ITEMS } from './header';
 import { sculptPanels } from './sculpt';
 import { vpaintPanels } from './vpaint';
+import { uvMappingMenu } from '../uvedit/uvmenus';
 
 export const TOOL_TABS: { id: string; label: string; poll: () => boolean }[] = [
   { id: 'Tools', label: 'Tools', poll: () => true },
@@ -297,7 +298,16 @@ export function toolshelfPanels(view: View3D): PanelDef[] {
         const r2 = l.row(true); r2.operator('mesh.normals_make_consistent', { text: 'Recalculate' }); r2.operator('mesh.flip_normals', { text: 'Flip Direction' });
       },
     });
-    P.push({ id: 'uvs', label: 'UVs', draw: (l) => { na(l, 'Unwrap'); const r = l.row(true); na(r, 'Mark Seam'); na(r, 'Clear Seam'); } });
+    P.push({
+      id: 'uvs', label: 'UVs', draw: (l) => {
+        l.label('UV Mapping:');
+        l.menu('Unwrap', () => uvMappingMenu(), { title: 'UV Mapping' });
+        l.label('Edges:');
+        const r = l.row(true);
+        r.operator('mesh.mark_seam', { text: 'Mark Seam', props: { clear: false } });
+        r.operator('mesh.mark_seam', { text: 'Clear Seam', props: { clear: true } });
+      },
+    });
   } else if (tab === 'Options') {
     P.push({
       id: 'meshoptions', label: 'Mesh Options', draw: (l) => {

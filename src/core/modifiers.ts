@@ -1,6 +1,7 @@
 // Modifier stack evaluation. Every modifier takes an EvalMesh and returns a new one.
 
-import type { MeshData, Modifier, ModifierType, Vec3 } from './types';
+import type { BObject, Doc, MeshData, Modifier, ModifierType, Vec3 } from './types';
+import { evalUVLayersFromData, propagateEvalUVs, type EvalUVLayer } from './uvdata';
 import {
   add, cross, dot, edgeKey, length, lerp3, meshBounds, normalize, polyCenter, polyNormal, scale, sub, triangulatePoly,
 } from './mesh';
@@ -16,12 +17,19 @@ export interface EvalMesh {
   forceSmooth?: boolean;
   /** Per-vertex colours (vertex paint), if the mesh has them. */
   vcol?: Vec3[];
+  /** UV maps (per face corner, parallel to `faces`), carried through the stack by uvdata.ts. */
+  uvLayers?: EvalUVLayer[];
+  /** Index into `uvLayers` of the map used for rendering. */
+  uvRender?: number;
 }
 
 export interface ModifierContext {
   frame: number;
   render: boolean;
   editMode: boolean;
+  /** Object being evaluated and its document (for modifiers that read other objects, vertex groups, ...). */
+  ob?: BObject;
+  doc?: Doc;
 }
 
 export interface ModifierDef {
@@ -44,6 +52,7 @@ export function evalMeshFromData(md: MeshData): EvalMesh {
     faceSmooth: md.faceSmooth.slice(),
     faceMat: md.faceMat.slice(),
     vcol: md.vcol && md.vcol.length === md.verts.length ? md.vcol.map((c) => [c[0], c[1], c[2]] as Vec3) : undefined,
+    uvLayers: evalUVLayersFromData(md), uvRender: md.uvLayers?.length ? Math.min(md.uvLayers.length - 1, md.uvActiveRender ?? 0) : undefined,
   };
 }
 
@@ -451,6 +460,7 @@ export function evaluateModifiers(md: MeshData, mods: Modifier[], ctx: ModifierC
     m.faces = m.faces.filter((_, i) => keep[i]);
     m.faceSmooth = m.faceSmooth.filter((_, i) => keep[i]);
     m.faceMat = m.faceMat.filter((_, i) => keep[i]);
+    if (m.uvLayers) for (const l of m.uvLayers) l.uv = l.uv.filter((_, i) => keep[i]);
   }
   for (const mod of mods) {
     if (ctx.render ? !mod.showRender : !mod.showViewport) continue;
@@ -461,6 +471,7 @@ export function evaluateModifiers(md: MeshData, mods: Modifier[], ctx: ModifierC
       const before = m;
       m = def.apply(m, mod, ctx);
       if (before.vcol && (!m.vcol || m.vcol.length !== m.verts.length)) { m.vcol = undefined; transferVcol(before, m); }
+      if (before.uvLayers || m.uvLayers) propagateEvalUVs(before, m, mod, ctx);
     } catch (err) { console.warn('modifier failed', mod.type, err); }
   }
   return m;

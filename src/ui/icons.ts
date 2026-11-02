@@ -141,6 +141,27 @@ const ICONS: Record<string, string> = {
   CURVE_BEZCURVE: ln('M2 12 C4 2 12 14 14 4', OL, 1.4),
   CURVE_BEZCIRCLE: c(8, 8, 5, 'none'),
   CURVE_PATH: ln('M2 12 L6 6 L10 10 L14 4', OL, 1.4),
+  // curves, surfaces and metaballs (Add menu)
+  CURVE_NCURVE: ln('M2 12 L5 4 L11 4 L14 12', GY, 0.8) + ln('M2 12 C5 5.5 11 5.5 14 12', OL, 1.4) + dot(5, 4, 1.1) + dot(11, 4, 1.1),
+  CURVE_NCIRCLE: ln('M3 3 H13 V13 H3 Z', GY, 0.8) + c(8, 8, 4.4, 'none', OL, 1.4) + dot(3, 3, 1.1) + dot(13, 3, 1.1) + dot(13, 13, 1.1) + dot(3, 13, 1.1),
+  SURFACE_NCURVE: ln('M2 12 C5 5.5 11 5.5 14 12', OR, 1.8) + dot(2, 12, 1.1) + dot(14, 12, 1.1),
+  SURFACE_NCIRCLE: c(8, 8, 4.8, 'none', OR, 1.8),
+  SURFACE_NSURFACE: s('M2 9 C5 5.5 11 5.5 14 9 L14 12.5 C11 9 5 9 2 12.5 Z', LT) + ln('M6 7 V11.2 M10 7 V11.2', OL, 0.7),
+  SURFACE_NCYLINDER: s('M3 4.5 V11.5 C3 14 13 14 13 11.5 V4.5 Z', LT) + `<ellipse cx="8" cy="4.5" rx="5" ry="2" fill="#cfcfcf" stroke="${OL}" stroke-width="1"/>` + ln('M5.5 6.3 V12.8 M10.5 6.3 V12.8', OL, 0.6),
+  SURFACE_NSPHERE: c(8, 8, 5.5, LT) + ln('M2.5 8 C4.5 10.5 11.5 10.5 13.5 8 M2.5 8 C4.5 5.5 11.5 5.5 13.5 8', OL, 0.6),
+  SURFACE_NTORUS: `<ellipse cx="8" cy="8.5" rx="6.3" ry="4.3" fill="${LT}" stroke="${OL}" stroke-width="1"/><ellipse cx="8" cy="8" rx="2.6" ry="1.4" fill="#727272" stroke="${OL}" stroke-width="1"/>` + ln('M3 6.5 C5 9 11 9 13 6.5', OL, 0.5),
+  META_BALL: c(8, 8, 5.2, LT) + `<circle cx="6.3" cy="6.3" r="1.6" fill="#fff" opacity="0.8"/>`,
+  META_CAPSULE: rect(1.8, 5, 12.4, 6, LT, OL, 3) + `<circle cx="5" cy="7" r="1.1" fill="#fff" opacity="0.8"/>`,
+  META_PLANE: rect(2, 6, 12, 4, LT, OL, 2) + ln('M3.5 7.5 H12.5', '#fff', 0.8),
+  META_ELLIPSOID: `<ellipse cx="8" cy="8" rx="6" ry="3.8" fill="${LT}" stroke="${OL}" stroke-width="1"/><circle cx="5.5" cy="6.6" r="1.2" fill="#fff" opacity="0.8"/>`,
+  META_CUBE: rect(2.8, 2.8, 10.4, 10.4, LT, OL, 3) + `<circle cx="5.6" cy="5.6" r="1.3" fill="#fff" opacity="0.8"/>`,
+  OUTLINER_DATA_CURVE: ln('M2 12 C4 2 12 14 14 4', OL, 1.6),
+  OUTLINER_DATA_SURFACE: s('M2 11 C5 6 11 6 14 11 L14 13 L2 13 Z', LT),
+  OUTLINER_DATA_META: c(6, 9, 3.5, LT) + c(10.5, 7, 3, LT),
+  HANDLETYPE_AUTO_VEC: c(8, 8, 2.2, YE) + ln('M2 8 H14', YE, 1.2),
+  HANDLETYPE_VECTOR_VEC: c(8, 8, 2.2, GR) + ln('M2 11 L8 8 L14 11', GR, 1.2),
+  HANDLETYPE_ALIGNED_VEC: c(8, 8, 2.2, '#e070e0') + ln('M2 10 L14 6', '#e070e0', 1.2),
+  HANDLETYPE_FREE_VEC: c(8, 8, 2.2, '#d02020') + ln('M2 11 L8 8 L14 5', '#d02020', 1.2),
   LAMP_POINT: bulb(),
   LAMP_SUN: c(8, 8, 3, YE) + ln('M8 1.5 V3.5 M8 12.5 V14.5 M1.5 8 H3.5 M12.5 8 H14.5 M3.4 3.4 L4.8 4.8 M11.2 11.2 L12.6 12.6 M3.4 12.6 L4.8 11.2 M11.2 4.8 L12.6 3.4', OL, 1.2),
   LAMP_SPOT: s('M6 2 H10 L13.5 13 H2.5 Z', YE),
@@ -370,6 +391,16 @@ const ICONS: Record<string, string> = {
   CURVE_DATA: ln('M2 12 C4 2 12 14 14 4', OL, 1.6),
   FONT_DATA: `<text x="8" y="13" font-size="13" text-anchor="middle" fill="${LT}" stroke="${OL}" stroke-width="0.6" font-family="serif" font-weight="bold">a</text>`,
   ARMATURE_DATA: s('M4 12 L9 4 L11.5 6 L5.5 13 Z', LT) + c(10.5, 4.5, 2, LT),
+  BONE_DATA: s('M3.5 12.5 L5 9 L10 4 L12 6 L7 11 Z', LT) + c(4, 12, 1.6, LT) + c(11.3, 4.7, 1.8, LT),
+  OUTLINER_DATA_ARMATURE: s('M4 12 L9 4 L11.5 6 L5.5 13 Z', LT) + c(10.5, 4.5, 2, LT),
+  OUTLINER_DATA_LATTICE: rect(2.5, 2.5, 11, 11, LT) + grid(3),
+  OUTLINER_DATA_POSE: s('M4 12 L9 4 L11.5 6 L5.5 13 Z', BL) + c(10.5, 4.5, 2, BL),
+  POSE_DATA: s('M4 12 L9 4 L11.5 6 L5.5 13 Z', BL) + c(10.5, 4.5, 2, BL),
+  MOD_ARMATURE: s('M3 13 L8.5 4.5 L11 6.5 L5 13.5 Z', BL) + c(10.2, 5, 2, BL) + ln('M1.5 9 L4 7', OL, 1),
+  HOOK: ln('M9 2 V9 C9 12.5 4 12.5 4 9.5', OL, 2.2) + ln('M9 2 V9 C9 12.5 4 12.5 4 9.5', LT, 1.1) + ln('M2.8 10.8 L4 9.5 L5.4 10.5', OL, 1.2),
+  GROUP_VERTEX: s('M3 12 L8 3 L13 12 Z', LT) + dot(3, 12, 1.6, '#000') + dot(8, 3, 1.6, '#000') + dot(13, 12, 1.6, '#000'),
+  GROUP_BONE: s('M3.5 12.5 L5 9 L10 4 L12 6 L7 11 Z', GR) + c(4, 12, 1.6, GR) + c(11.3, 4.7, 1.8, GR),
+  CONSTRAINT_BONE: ln('M3 5 L6 2 L9 5 M6 2 V9', OL, 1.4) + s('M8 14 L9.5 10.5 L13 7 L14.5 8.5 L11 12 Z', LT) + c(13.5, 7.5, 1.4, LT),
   LATTICE_DATA: rect(2.5, 2.5, 11, 11, LT) + grid(3),
   META_DATA: c(6, 9, 3.5, LT) + c(10.5, 7, 3, LT),
   SURFACE_DATA: s('M2 11 C5 6 11 6 14 11 L14 13 L2 13 Z', LT),
@@ -380,11 +411,63 @@ function FILE_NEW_PLACEHOLDER(): string {
   return s('M3.5 1.5 H9.5 L12.5 4.5 V14.5 H3.5 Z', '#fff') + ln('M8 6.5 V12.5 M5 9.5 H11', GR, 1.8);
 }
 
+// node, NLA, sequencer and movie clip editor icons
+const mk = (x: number, y: number) => rect(x - 3, y - 3, 6, 6, 'none', '#000', 0) + ln(`M${x - 4.5} ${y} H${x - 1.5} M${x + 1.5} ${y} H${x + 4.5} M${x} ${y - 4.5} V${y - 1.5} M${x} ${y + 1.5} V${y + 4.5}`, '#000', 1);
+Object.assign(ICONS, {
+  NODE_COMPOSITING: rect(1.5, 2.5, 7, 6, '#ddd') + s('M2.5 7.5 L4.5 5 L6 6.5 L7.5 4.5 L7.5 7.5 Z', GR, GR, 0.5) + rect(9.5, 8.5, 5, 5, LT) + ln('M8.5 5.5 C11 5.5 7.5 11 9.5 11', OL, 1.1),
+  NODE_MATERIAL: c(5, 6, 3.6, RD) + `<circle cx="4" cy="5" r="1.2" fill="#ffd0c8"/>` + rect(9.5, 8.5, 5, 5, LT) + ln('M8.6 6 C11 6 7.5 11 9.5 11', OL, 1.1),
+  NODE_TEXTURE: rect(1.5, 2.5, 6.5, 6.5, '#fff') + `<path d="M2 3h2.8v2.8H2zM4.8 5.8h2.8v2.8H4.8z" fill="#c04040"/>` + rect(9.5, 8.5, 5, 5, LT) + ln('M8 5.5 C11 5.5 7.5 11 9.5 11', OL, 1.1),
+  ARROW_LEFTRIGHT: ln('M2 8 H14 M2 8 L5 5 M2 8 L5 11 M14 8 L11 5 M14 8 L11 11', '#000', 1.5),
+  FILE_MOVIE: rect(2.5, 1.5, 11, 13, '#444') + rect(5, 3.5, 6, 9, BL) + `<path d="M3.3 3h1v1.4h-1zM3.3 6h1v1.4h-1zM3.3 9h1v1.4h-1zM3.3 12h1v1.4h-1zM11.7 3h1v1.4h-1zM11.7 6h1v1.4h-1zM11.7 9h1v1.4h-1zM11.7 12h1v1.4h-1z" fill="#ddd"/>`,
+  FILE_IMAGE: rect(1.5, 2.5, 13, 11, '#fff') + s('M2 13 L6 7 L9 11 L11 9 L14 13 Z', GR, GR) + c(11, 5.5, 1.5, YE, YE),
+  MUTE_IPO_OFF: rect(3, 3, 10, 10, LT) + ln('M5 8 L7.3 10.5 L11.5 5', '#000', 1.6),
+  MUTE_IPO_ON: rect(3, 3, 10, 10, '#777'),
+  SOLO_OFF: s('M8 1.8 L9.8 6 L14.3 6.2 L10.8 9 L12 13.6 L8 11 L4 13.6 L5.2 9 L1.7 6.2 L6.2 6 Z', 'none', '#222', 1),
+  SOLO_ON: s('M8 1.8 L9.8 6 L14.3 6.2 L10.8 9 L12 13.6 L8 11 L4 13.6 L5.2 9 L1.7 6.2 L6.2 6 Z', YE, '#222', 1),
+  SEQ_SEQUENCER: rect(1.5, 2.5, 13, 11, '#444') + rect(2.5, 4, 7, 2.5, BL) + rect(6, 7.5, 7.5, 2.5, GR) + rect(3.5, 11, 5, 1.8, '#c8a050'),
+  SEQ_PREVIEW: rect(1.5, 3, 13, 10, '#222') + s('M2.5 12 L6 7.5 L8.5 10.5 L10.5 8.5 L13.5 12 Z', GR, GR, 0.5) + c(11.5, 5.5, 1.2, YE, YE),
+  SEQ_SPLITVIEW: rect(1.5, 1.5, 13, 6, '#222') + s('M2.5 7 L5 4 L7 6 L9 4.5 L13.5 7 Z', GR, GR, 0.5) + rect(1.5, 9, 13, 5.5, '#444') + rect(2.5, 10, 6, 1.5, BL) + rect(7, 12, 6, 1.5, GR),
+  COLOR: c(6, 6, 3.2, RD) + c(10, 6, 3.2, GR) + c(8, 10, 3.2, BL),
+  TRACKING: mk(8, 8),
+  TRACKER: mk(8, 8),
+  TRACKING_FORWARDS: mk(5.5, 8) + s('M10.5 4.5 L14.5 8 L10.5 11.5 Z', '#000', '#000', 0.5),
+  TRACKING_BACKWARDS: mk(10.5, 8) + s('M5.5 4.5 L1.5 8 L5.5 11.5 Z', '#000', '#000', 0.5),
+  TRACKING_FORWARDS_SINGLE: mk(5.5, 8) + s('M10.5 5 L13.5 8 L10.5 11 Z', '#000', '#000', 0.5) + ln('M14.5 5 V11', '#000', 1.2),
+  TRACKING_BACKWARDS_SINGLE: mk(10.5, 8) + s('M5.5 5 L2.5 8 L5.5 11 Z', '#000', '#000', 0.5) + ln('M1.5 5 V11', '#000', 1.2),
+  NLA_PUSHDOWN: rect(2, 10.5, 12, 3.5, '#d8a050') + s('M6 2 H10 V5.5 H12.5 L8 9.5 L3.5 5.5 H6 Z', LT),
+  ACTION_TWEAK: rect(1.5, 2.5, 13, 11, '#555') + s('M5 5 L7 7 L5 9 L3 7 Z', YE) + s('M8.5 12.5 L9 10 L13 6 L14.5 7.5 L10.5 11.5 Z', '#f0a040'),
+  FCURVE: ln('M1.5 12 C5 12 5 4 8 4 C11 4 11 12 14.5 12', '#000', 1.4),
+  FILE_SOUND: s('M3 6 H6 L10 2.5 V13.5 L6 10 H3 Z', LT) + ln('M12 5 C13.5 7 13.5 9 12 11', OL, 1.2),
+});
+
 // aliases
 ICONS.OPEN_RECENT = ICONS.FILE_FOLDER;
 ICONS.LOAD_FACTORY = ICONS.FILE_REFRESH;
 ICONS.MATERIAL_DATA = ICONS.MATERIAL;
 ICONS.MESH = ICONS.MESH_DATA;
+
+// UV editing, images and texture paint
+const uvSquare = (extra: string) => rect(2, 2, 12, 12, '#7a7a7a', OL, 0.5) + ln('M2 8 H14 M8 2 V14', '#5a5a5a', 0.8) + extra;
+const brushTip = (fill: string) => s('M2.5 13.5 L4.5 9.5 L11 3 L13 5 L6.5 11.5 Z', '#ddd') + c(4, 12, 2, fill, OL, 0.8);
+Object.assign(ICONS, {
+  GROUP_UVS: rect(2.5, 2.5, 11, 11, '#d0d0d0') + ln('M2.5 8 H13.5 M8 2.5 V13.5', OL, 0.8) + s('M4 12 L8 4 L12 12 Z', 'none', '#c03030', 1.2),
+  UV_VERTEXSEL: uvSquare(s('M4 12 L12 12 L12 4 Z', 'none', LT, 0.9) + dot(12, 4, 1.8, OR)),
+  UV_EDGESEL: uvSquare(s('M4 12 L12 12 L12 4 Z', 'none', LT, 0.9) + ln('M4 12 L12 12', OR, 2)),
+  UV_FACESEL: uvSquare(s('M4 12 L12 12 L12 4 Z', 'rgba(242,160,60,0.6)', OR, 1.2)),
+  UV_ISLANDSEL: uvSquare(s('M3 12 L7 12 L7 8 Z', 'rgba(242,160,60,0.6)', OR, 1) + s('M9 7 L13 7 L13 3 Z', 'rgba(242,160,60,0.6)', OR, 1)),
+  UV_SYNC_SELECT: s('M2 6 L8 2.5 L14 6 L8 9.5 Z', LT) + ln('M2 10 L8 13.5 L14 10', OR, 1.4) + ln('M8 9.5 V13.5', OR, 1),
+  STICKY_UVS_DISABLE: rect(2, 2, 5, 5, LT) + rect(9, 9, 5, 5, LT),
+  STICKY_UVS_VERT: rect(2, 2, 5, 5, LT) + rect(9, 9, 5, 5, LT) + ln('M7 7 L9 9', OR, 1.6),
+  IMAGE_RGB: rect(2, 3, 12, 10, '#fff') + rect(3, 4, 3, 8, RD, RD, 0) + rect(6.5, 4, 3, 8, GR, GR, 0) + rect(10, 4, 3, 8, BL, BL, 0),
+  IMAGE_RGB_ALPHA: checker(),
+  IMAGE_ALPHA: rect(2, 3, 12, 10, '#fff') + `<path d="M2 3 H14 L2 13 Z" fill="#222"/>`,
+  BRUSH_TEXDRAW: brushTip('#e0e0e0'),
+  BRUSH_SOFTEN: brushTip('#b0c8e0'),
+  BRUSH_SMEAR: brushTip('#e0b0b0'),
+  BRUSH_CLONE: brushTip(GR),
+  BRUSH_TEXFILL: s('M3 7 L8 2.5 L13 7 L8 12.5 Z', LT) + s('M11 9 C12 11 14 12 13 13.5 C12 14.5 10.5 13.5 11 12 Z', BL),
+  BRUSH_TEXMASK: brushTip('#333'),
+});
 
 export function iconSvg(name: string | undefined | null): string {
   if (!name || name === 'NONE') return '';
@@ -413,6 +496,11 @@ export function objectIcon(type: string): string {
     case 'LAMP': return 'OUTLINER_OB_LAMP';
     case 'EMPTY': return 'OUTLINER_OB_EMPTY';
     case 'FONT': return 'OUTLINER_OB_FONT';
+    case 'ARMATURE': return 'OUTLINER_OB_ARMATURE';
+    case 'LATTICE': return 'OUTLINER_OB_LATTICE';
+    case 'CURVE': return 'OUTLINER_OB_CURVE';
+    case 'SURFACE': return 'OUTLINER_OB_SURFACE';
+    case 'META': return 'OUTLINER_OB_META';
     default: return 'OBJECT_DATA';
   }
 }
@@ -424,6 +512,11 @@ export function objectDataIcon(type: string): string {
     case 'LAMP': return 'LAMP_DATA';
     case 'EMPTY': return 'EMPTY_DATA';
     case 'FONT': return 'FONT_DATA';
+    case 'ARMATURE': return 'ARMATURE_DATA';
+    case 'LATTICE': return 'LATTICE_DATA';
+    case 'CURVE': return 'CURVE_DATA';
+    case 'SURFACE': return 'SURFACE_DATA';
+    case 'META': return 'META_DATA';
     default: return 'DOT';
   }
 }
