@@ -412,6 +412,7 @@ export function objectIcon(type: string): string {
     case 'CAMERA': return 'OUTLINER_OB_CAMERA';
     case 'LAMP': return 'OUTLINER_OB_LAMP';
     case 'EMPTY': return 'OUTLINER_OB_EMPTY';
+    case 'FONT': return 'OUTLINER_OB_FONT';
     default: return 'OBJECT_DATA';
   }
 }
@@ -422,6 +423,7 @@ export function objectDataIcon(type: string): string {
     case 'CAMERA': return 'CAMERA_DATA';
     case 'LAMP': return 'LAMP_DATA';
     case 'EMPTY': return 'EMPTY_DATA';
+    case 'FONT': return 'FONT_DATA';
     default: return 'DOT';
   }
 }

@@ -18,6 +18,7 @@ import { addMenu, objectMenu, meshMenu, selectMenu, viewMenu } from './menus';
 import { drawView3DHeader } from './header';
 import { startSculptStroke, sculptKey, sculptMenu } from './sculpt';
 import { startPaintStroke, vpaintKey, vpaintMenu, fillVertexColors } from './vpaint';
+import { textEditKey } from '../../core/text3d';
 
 export interface OverlayShape {
   kind: 'rect' | 'circle' | 'lasso' | 'cross';
@@ -280,6 +281,11 @@ export class View3D extends Editor {
 
   override onKey(e: KeyboardEvent): boolean {
     if (app.mode === 'SCULPT') return sculptKey(this, e);
+    const eo = app.editObj;
+    if (app.mode === 'EDIT' && eo?.type === 'FONT') {
+      if (textEditKey(eo, e)) { app.notify('geometry', 'scene'); this.requestRender(); return true; }
+      return false;
+    }
     if (app.mode === 'VERTEX_PAINT') {
       if (e.shiftKey && e.code === 'KeyK') { fillVertexColors(); return true; }
       return vpaintKey(this, e);

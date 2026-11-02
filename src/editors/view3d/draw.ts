@@ -585,15 +585,15 @@ export class ViewportRenderer {
       const active = app.scene.activeObject === ob.id;
       const wireMat = active && selected ? this.wireMats.active : selected ? this.wireMats.select : this.wireMats.normal;
 
-      if (ob.type === 'MESH') {
+      if (ob.type === 'MESH' || ob.type === 'FONT') {
         const em = app.evalMesh(ob, false);
         const md = app.meshOf(ob);
-        if (em && md) {
-          const smoothKey = `${md.autoSmooth}${md.autoSmoothAngle}`;
+        if (em && (md || ob.type === 'FONT')) {
+          const smoothKey = `${md?.autoSmooth}${md?.autoSmoothAngle}`;
           if (!e.geom || e.geom.src !== em || e.geom.smoothKey !== smoothKey) {
             e.geom?.geom.dispose();
             e.geom?.edges.dispose();
-            const b = buildMeshGeometry(em, md.autoSmooth, md.autoSmoothAngle);
+            const b = buildMeshGeometry(em, !!md?.autoSmooth, md?.autoSmoothAngle ?? 0.5);
             e.geom = { src: em, smoothKey, geom: b.geom, edges: buildEdgeGeometry(em), triFace: b.triFace, matCount: b.matCount };
             if (e.mesh) { e.mesh.geometry = e.geom.geom; }
             if (e.wire) { e.wire.geometry = e.geom.edges; }
@@ -612,8 +612,9 @@ export class ViewportRenderer {
           }
           // materials per slot
           const mats: Material[] = [];
-          for (let i = 0; i < Math.max(1, e.geom.matCount, md.materials.length); i++) {
-            const mm = this.materialFor(md.materials[i] ?? null);
+          const slots = md?.materials ?? [];
+          for (let i = 0; i < Math.max(1, e.geom.matCount, slots.length); i++) {
+            const mm = this.materialFor(slots[i] ?? null);
             let m: Material;
             if (shading === 'MATERIAL' || shading === 'RENDERED') m = mm.data?.useShadeless ? mm.basic : mm.lit;
             else if (shading === 'TEXTURED' && mm.data && (mm.lit as MeshPhongMaterial & { userData: { hasTex?: boolean } }).userData.hasTex) {

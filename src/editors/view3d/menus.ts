@@ -162,7 +162,7 @@ export function addMenu(): MenuItem[] {
     sub('Curve', [na('Bezier', 'CURVE_BEZCURVE'), na('Circle', 'CURVE_BEZCIRCLE'), na('Path', 'CURVE_PATH')], 'OUTLINER_OB_CURVE'),
     sub('Surface', [na('NURBS Surface', 'SURFACE_DATA')], 'OUTLINER_OB_SURFACE'),
     sub('Metaball', [na('Ball', 'META_DATA')], 'OUTLINER_OB_META'),
-    na('Text', 'OUTLINER_OB_FONT'),
+    op('Text', 'object.text_add', {}, 'OUTLINER_OB_FONT'),
     sep,
     sub('Armature', [na('Single Bone', 'ARMATURE_DATA')], 'OUTLINER_OB_ARMATURE'),
     na('Lattice', 'OUTLINER_OB_LATTICE'),

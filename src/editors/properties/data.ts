@@ -3,7 +3,7 @@
 // data_camera.ts / data_lamp.ts.
 
 import { app } from '../../app';
-import { bprop, eprop, fprop, type Layout, type PanelDef } from '../../ui/layout';
+import { bprop, eprop, fprop, iprop, sprop, type Layout, type PanelDef } from '../../ui/layout';
 import {
   activeWhen, customPropsBody, flatPanel, meshData, NA, naBool, naButton, naFloat, naString, ob, richList, type PropsCtx,
 } from './common';
@@ -98,6 +98,59 @@ export function dataPanels(ctx: PropsCtx): PanelDef[] {
     case 'CAMERA': return cameraPanels(ctx);
     case 'LAMP': return lampPanels(ctx);
     case 'EMPTY': return emptyPanels();
+    case 'FONT': return textPanels();
     default: return [];
   }
+}
+
+// ------------------------------------------------------------------ text (FONT) objects
+
+function textPanels(): PanelDef[] {
+  const T = () => ob()?.text ?? null;
+  const geo = { notify: ['geometry', 'scene'] };
+  return [
+    {
+      id: 'font.body', label: 'Text', draw: (l) => {
+        l.prop(sprop(T, 'body', { name: 'Body', description: 'Content of this text object (Tab into edit mode to type in the viewport)', ...geo }), { text: '' });
+        l.label('Tab: edit in the viewport; Alt+C converts to a mesh.');
+      },
+    },
+    {
+      id: 'font.shape', label: 'Shape', draw: (l) => {
+        l.prop(iprop(T, 'resolution', { name: 'Preview U', min: 1, max: 64, description: 'Number of computed points per curve segment', ...geo }));
+      },
+    },
+    {
+      id: 'font.geometry', label: 'Geometry', draw: (l) => {
+        const sp = l.split();
+        const c1 = sp.column(true);
+        c1.label('Modification:');
+        c1.prop(fprop(T, 'offsetX', { name: 'Offset X', step: 0.1, precision: 3, unit: 'LENGTH', ...geo }));
+        c1.prop(fprop(T, 'extrude', { name: 'Extrude', min: 0, step: 0.01, precision: 3, unit: 'LENGTH', description: 'Amount of curve extrusion', ...geo }));
+        const c2 = sp.column(true);
+        c2.label('Bevel:');
+        c2.prop(fprop(T, 'bevelDepth', { name: 'Depth', min: 0, step: 0.01, precision: 3, unit: 'LENGTH', description: 'Bevel depth (needs Extrude)', ...geo }));
+        c2.prop(iprop(T, 'bevelResolution', { name: 'Resolution', min: 0, max: 32, description: 'Bevel resolution', ...geo }));
+      },
+    },
+    {
+      id: 'font.font', label: 'Font', draw: (l) => {
+        l.label('Regular: DejaVu Sans (Bfont)', { icon: 'FONT_DATA' });
+        const sp = l.split();
+        const c1 = sp.column(true);
+        c1.prop(fprop(T, 'size', { name: 'Size', min: 0.0001, step: 0.1, precision: 3, unit: 'LENGTH', ...geo }));
+        c1.prop(fprop(T, 'shearX', { name: 'Shear', min: -1, max: 1, step: 0.01, precision: 3, ...geo }));
+        const c2 = sp.column(true);
+        c2.prop(fprop(T, 'offsetY', { name: 'Y Offset', step: 0.1, precision: 3, unit: 'LENGTH', ...geo }));
+      },
+    },
+    {
+      id: 'font.paragraph', label: 'Paragraph', draw: (l) => {
+        l.label('Align:');
+        l.prop(eprop(T, 'align', [{ id: 'LEFT', label: 'Left' }, { id: 'CENTER', label: 'Center' }, { id: 'RIGHT', label: 'Right' }, { id: 'JUSTIFY', label: 'Justify', disabled: true }, { id: 'FLUSH', label: 'Flush', disabled: true }], { name: 'Align', ...geo }), { expand: true });
+        l.label('Spacing:');
+        l.prop(fprop(T, 'lineSpacing', { name: 'Line Distance', min: 0, max: 10, step: 0.1, precision: 3, ...geo }));
+      },
+    },
+  ];
 }

@@ -17,6 +17,7 @@ import { dialogOpen } from './ui/popup';
 import { showSplash } from './ui/splash';
 import { setUnitSettings } from './ui/format';
 import { cancelRender } from './render/render';
+import { onFontLoaded } from './core/text3d';
 import type { Area } from './screen/screen';
 
 // editors (each registers itself)
@@ -31,6 +32,9 @@ import './editors/userprefs';
 
 const a = createApp();
 for (const def of [...TRANSFORM_OPERATORS, ...OBJECT_OPERATORS, ...MESH_OPERATORS, ...VIEW_OPERATORS, ...SCREEN_OPERATORS]) a.registerOperator(def);
+
+// regenerate text objects once the font has loaded
+onFontLoaded(() => app.tagAllGeometry());
 
 // keep the unit display settings in sync with the active scene
 a.onChange(() => setUnitSettings(app.scene.unit));

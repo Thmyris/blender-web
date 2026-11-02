@@ -7,6 +7,8 @@ the Outliner, the Timeline, F12 rendering, and Python scripting with `bpy`.
 
 ![blender-web](docs/screenshot.png)
 
+> The 3D text font is a Latin-1 subset of DejaVu Sans (`src/assets/fonts/`, Bitstream Vera license, see `DEJAVU-LICENSE.txt`).
+>
 > This is an independent fan project. It is not affiliated with or endorsed by the Blender Foundation.
 > "Blender" is a trademark of the Blender Foundation. All code and icons in this repository are original.
 
@@ -74,6 +76,7 @@ URL options: `?nosplash` skips the splash screen; `?pyodide=<url>` loads Python 
 - **Vertex Paint mode**
   - Mix, Add, Subtract, Multiply, Lighten, Darken and Blur brushes; Ctrl paints the inverted colour, Shift blurs; Set Vertex Colors (Shift+K).
   - Colours show through modifiers and in renders via the material's "Vertex Color Paint" option.
+- **Text objects**: Add > Text, Tab to type in the viewport (arrows, Home/End, Enter for new lines), size, extrude, bevel, alignment, line spacing, shear and offsets in the Data tab, and Alt+C to convert to a mesh.
 - **Particle systems** (Emitter): number, start/end frame, lifetime, emit from faces or verts, normal and random velocity, gravity, size and display percentage. Drawn in the viewport and rendered as soft points.
 - **Edit mode** (Tab)
   - Vertex, edge and face select modes; Alt+RMB edge and face loops; L / Ctrl+L select linked; select more/less/random/non-manifold/loose/by sides/sharp edges.
@@ -110,7 +113,7 @@ URL options: `?nosplash` skips the splash screen; `?pyodide=<url>` loads Python 
 These items are shown greyed out in the UI where 2.79 has them:
 
 - **Not available:**
-  - Weight and texture paint, dynamic topology, curves, surfaces, metaballs, text objects, armatures and lattices.
+  - Weight and texture paint, dynamic topology, curves, surfaces, metaballs, armatures and lattices; text objects use one built-in font and have no materials until converted to a mesh.
   - Hair particles and physics simulations (rigid body, cloth, fluid, smoke); Cycles and the Game Engine.
   - The node, NLA, sequencer and movie clip editors.
   - UV unwrapping, knife/bevel/screw/bisect tools, edge and volume snapping, and the Suzanne (Monkey) primitive.
@@ -124,10 +127,10 @@ These items are shown greyed out in the UI where 2.79 has them:
 | Path | Contents |
 | --- | --- |
 | `src/app.ts` | Global state: document, mode, undo stack, operator registry, reports, preferences, evaluated-mesh cache, playback |
-| `src/core/` | Document model (`types.ts`), scene defaults (2.79 startup file) and matrices, mesh data and primitives, mesh editing algorithms (`meshops.ts`), modifier stack, F-curve animation |
+| `src/core/` | Document model (`types.ts`), scene defaults (2.79 startup file) and matrices, mesh data and primitives, mesh editing algorithms (`meshops.ts`), modifier stack, F-curve animation, particles, 3D text |
 | `src/ui/` | Widget/layout engine modelled on `bpy.types.UILayout`, menus, popups, colour picker, icons, number formatting |
 | `src/screen/` | Area tree (split / join / resize / maximize) and the editor base class |
-| `src/editors/` | 3D View (`view3d/`: viewport state, Three.js drawing, overlay, selection, transform, panels, menus, header), Outliner, Properties (`properties/`), Info, Timeline / Dope Sheet / Graph, Text Editor / Console, Image Editor, User Preferences |
+| `src/editors/` | 3D View (`view3d/`: viewport state, Three.js drawing, overlay, selection, transform, sculpt and vertex paint, panels, menus, header), Outliner, Properties (`properties/`), Info, Timeline / Dope Sheet / Graph, Text Editor / Console, Image Editor, User Preferences |
 | `src/ops/` | Operators (`bpy.ops`-style) for objects, meshes, the view, the screen, files, render and animation |
 | `src/keymap.ts` | The 2.79 default keymap and shortcut lookup |
 | `src/render/` | F12 / animation / OpenGL rendering |

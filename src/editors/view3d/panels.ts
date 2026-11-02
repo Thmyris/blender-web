@@ -254,7 +254,8 @@ export function toolshelfPanels(view: View3D): PanelDef[] {
           for (const [t, n, ic] of [['POINT', 'Point', 'LAMP_POINT'], ['SUN', 'Sun', 'LAMP_SUN'], ['SPOT', 'Spot', 'LAMP_SPOT'], ['HEMI', 'Hemi', 'LAMP_HEMI'], ['AREA', 'Area', 'LAMP_AREA']]) lc.operator('object.lamp_add', { text: n, icon: ic, props: { type: t }, align: 'left' });
           l.label('Other:');
           const oc = l.column(true);
-          na(oc, 'Text'); na(oc, 'Armature'); na(oc, 'Lattice');
+          oc.operator('object.text_add', { text: 'Text', icon: 'OUTLINER_OB_FONT', align: 'left' });
+          na(oc, 'Armature'); na(oc, 'Lattice');
           oc.operator('object.empty_add', { text: 'Empty', icon: 'OUTLINER_OB_EMPTY', props: { type: 'PLAIN_AXES' }, align: 'left' });
           na(oc, 'Force Field');
           oc.operator('object.camera_add', { text: 'Camera', icon: 'OUTLINER_OB_CAMERA', align: 'left' });

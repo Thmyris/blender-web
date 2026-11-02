@@ -6,6 +6,7 @@ import { activeScene, createStartupDoc, isObjectSelectable, isObjectVisible, Mat
 import { evaluateModifiers, type EvalMesh } from './core/modifiers';
 import { evaluateObjectAnimation } from './core/anim';
 import { ensureArrays, rebuildEdges } from './core/mesh';
+import { textEvalMesh } from './core/text3d';
 
 export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT';
 
@@ -288,6 +289,7 @@ export class App {
 
   /** Mesh with modifiers applied (cached). */
   evalMesh(ob: BObject, render = false): EvalMesh | null {
+    if (ob.type === 'FONT') return textEvalMesh(ob);
     const md = this.meshOf(ob);
     if (!md) return null;
     const editMode = this.mode === 'EDIT' && this.editObject === ob.id;
@@ -612,7 +614,7 @@ export class App {
       let v = 0, f = 0, t = 0;
       const vis = this.visibleObjects();
       for (const o of vis) {
-        const m = o.type === 'MESH' ? this.evalMesh(o) : null;
+        const m = o.type === 'MESH' || o.type === 'FONT' ? this.evalMesh(o) : null;
         if (!m) continue;
         v += m.verts.length; f += m.faces.length;
         for (const p of m.faces) t += Math.max(0, p.length - 2);

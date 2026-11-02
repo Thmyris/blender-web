@@ -15,6 +15,7 @@ import {
 import { newModifier, modifierDef, evaluateModifiers } from '../core/modifiers';
 import { joinMeshInto } from '../core/meshops';
 import { newParticleSystem } from '../core/particles';
+import { defaultTextData } from '../core/text3d';
 import { confirmPopup } from '../ui/popup';
 import { showMenu } from '../ui/menu';
 import { h } from '../ui/dom';
@@ -187,6 +188,18 @@ export const ADD_OPERATORS: OperatorDef[] = [
       const names: Record<LampType, string> = { POINT: 'Point', SUN: 'Sun', SPOT: 'Spot', HEMI: 'Hemi', AREA: 'Area' };
       const ob = createObject(app.doc, 'LAMP', names[t], la.id);
       addObjectCommon(ob, p);
+      return 'FINISHED';
+    },
+  },
+  {
+    id: 'object.text_add', label: 'Add Text', icon: 'OUTLINER_OB_FONT', undo: true, register: true, description: 'Add a text object to the scene',
+    poll: isObjectMode, props: { radius: { name: 'Radius', type: 'float', default: 1, min: 0.001, subtype: 'DISTANCE' }, ...commonAddProps },
+    invoke: invokeAdd('object.text_add'),
+    exec: (_c, p) => {
+      const ob = createObject(app.doc, 'FONT', 'Text', null);
+      ob.text = { ...defaultTextData(), size: n(p, 'radius') };
+      addObjectCommon(ob, p);
+      if (p.enter_editmode) { app.mode = 'EDIT'; app.editObject = ob.id; }
       return 'FINISHED';
     },
   },
@@ -780,6 +793,13 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
         app.tagAllGeometry();
         return 'FINISHED';
       }
+      if (mode === 'EDIT' && act.type === 'FONT') {
+        app.mode = 'EDIT';
+        app.editObject = act.id;
+        act.select = true;
+        if (act.text) act.text.cursor = act.text.body.length;
+        return 'FINISHED';
+      }
       if (mode === 'EDIT') {
         if (act.type !== 'MESH') { app.report('WARNING', `Unable to execute 'Toggle Editmode', error changing modes`); return 'CANCELLED'; }
         if (act.hide) return 'CANCELLED';
@@ -798,7 +818,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   },
   {
     id: 'object.editmode_toggle', label: 'Toggle Editmode', description: 'Toggle object\'s editmode', undo: true, register: true,
-    poll: () => !!app.activeObject && (app.activeObject.type === 'MESH' || app.mode === 'EDIT'),
+    poll: () => !!app.activeObject && (app.activeObject.type === 'MESH' || app.activeObject.type === 'FONT' || app.mode === 'EDIT'),
     // like Blender, Tab from sculpt mode goes to edit mode; from edit mode back to object mode
     exec: (ctx) => app.operator('object.mode_set')!.exec!(ctx, { mode: app.mode === 'EDIT' ? 'OBJECT' : 'EDIT', toggle: false }) as 'FINISHED',
   },
@@ -821,9 +841,18 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   },
   {
     id: 'object.convert', label: 'Convert to', description: 'Convert selected objects to another type (applies modifiers for meshes)', undo: true, register: true,
-    poll: () => isObjectMode() && selectedMeshes().length > 0,
+    poll: () => isObjectMode() && (selectedMeshes().length > 0 || app.selectedObjects().some((o) => o.type === 'FONT')),
     props: { target: { name: 'Target', type: 'enum', default: 'MESH', items: [['MESH', 'Mesh']] }, keep_original: { name: 'Keep Original', type: 'bool', default: false } },
     exec: () => {
+      for (const o of app.selectedObjects().filter((x) => x.type === 'FONT')) {
+        const em = app.evalMesh(o);
+        if (!em) continue;
+        const mesh = createMesh(app.doc, o.name, em.verts, em.faces);
+        o.type = 'MESH';
+        o.data = mesh.id;
+        delete o.text;
+        app.tagGeometry(mesh.id);
+      }
       for (const o of selectedMeshes()) {
         const md = app.meshOf(o)!;
         const ev = evaluateModifiers(md, o.modifiers, { frame: app.scene.frameCurrent, render: false, editMode: false });

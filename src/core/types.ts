@@ -5,7 +5,7 @@ export type Vec3 = [number, number, number];
 export type Color3 = [number, number, number];
 export type Color4 = [number, number, number, number];
 
-export type ObjectType = 'MESH' | 'CAMERA' | 'LAMP' | 'EMPTY';
+export type ObjectType = 'MESH' | 'CAMERA' | 'LAMP' | 'EMPTY' | 'FONT';
 export type RotationMode = 'XYZ' | 'XZY' | 'YXZ' | 'YZX' | 'ZXY' | 'ZYX';
 export type DrawType = 'BOUNDS' | 'WIRE' | 'SOLID' | 'TEXTURED';
 export type EmptyDrawType = 'PLAIN_AXES' | 'ARROWS' | 'SINGLE_ARROW' | 'CIRCLE' | 'CUBE' | 'SPHERE' | 'CONE';
@@ -253,6 +253,23 @@ export interface TimelineMarker {
 
 // ---------------------------------------------------------------- objects
 
+/** Settings of a text (FONT) object. */
+export interface TextData {
+  body: string;
+  size: number;
+  extrude: number;
+  bevelDepth: number;
+  bevelResolution: number;
+  resolution: number;
+  align: 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFY' | 'FLUSH';
+  lineSpacing: number;
+  shearX: number;
+  offsetX: number;
+  offsetY: number;
+  /** Cursor position while editing. */
+  cursor: number;
+}
+
 export interface BObject {
   id: string;
   name: string;
@@ -295,6 +312,8 @@ export interface BObject {
   /** Particle systems (simple emitter). */
   particleSystems: ParticleSystem[];
   activeParticleSystem?: number;
+  /** Text settings (FONT objects only). */
+  text?: TextData;
 }
 
 export interface ParticleSystem {

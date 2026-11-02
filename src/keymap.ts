@@ -176,6 +176,7 @@ export const KEYMAP: KeyItem[] = [
   M('KeyA', 'VIEW_3D', 'Apply', applyMenu, C, 'OBJECT'),
   M('KeyC', 'VIEW_3D', 'Set Origin', originMenu, { ctrl: true, shift: true, alt: true }, 'OBJECT'),
   M('KeyL', 'VIEW_3D', 'Make Links', makeLinksMenu, C, 'OBJECT'),
+  M('KeyC', 'VIEW_3D', 'Convert to', () => [{ label: 'Mesh from Curve/Meta/Surf/Text', op: 'object.convert', props: { target: 'MESH' } }], A, 'OBJECT'),
   M('KeyW', 'VIEW_3D', 'Specials', objectSpecialsMenu, {}, 'OBJECT'),
   M('KeyG', 'VIEW_3D', 'Select Grouped', selectGroupedMenu, S, 'OBJECT'),
   M('KeyL', 'VIEW_3D', 'Select Linked', selectLinkedMenu, S, 'OBJECT'),
