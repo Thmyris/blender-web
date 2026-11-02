@@ -15,6 +15,7 @@ import { activeGroupIndex, groupsOf, uniqueGroupName } from '../../core/vgroups'
 import { regrid } from '../../core/lattice';
 import { setRotationMode, newBoneConstraint } from '../view3d/pose';
 import { flushArmSelection } from '../view3d/armedit';
+import { keyState, insertKeyframe, deleteKeyframe, findFCurve } from '../../core/anim';
 
 // ------------------------------------------------------------------ helpers
 
@@ -78,9 +79,9 @@ function vgSpecials(): MenuItem[] {
   return [
     op('Sort by Name', 'object.vertex_group_sort', { sort_type: 'NAME' }, 'SORTALPHA'),
     op('Sort by Bone Hierarchy', 'object.vertex_group_sort', { sort_type: 'BONE_HIERARCHY' }, 'BONE_DATA'),
-    op('Copy Vertex Group', 'object.vertex_group_copy', {}, 'COPY_ID'),
-    { label: 'Copy Vertex Groups to Linked', disabled: true, description: NA, icon: 'LINK_AREA' },
-    { label: 'Copy Vertex Group to Selected', disabled: true, description: NA, icon: 'LINK_AREA' },
+    op('Copy Vertex Group', 'object.vertex_group_copy', {}),
+    { label: 'Copy Vertex Groups to Linked', disabled: true, description: NA },
+    { label: 'Copy Vertex Group to Selected', disabled: true, description: NA },
     op('Mirror Vertex Group', 'object.vertex_group_mirror', { use_topology: false }, 'ARROW_LEFTRIGHT'),
     { label: 'Mirror Vertex Group (Topology)', disabled: true, description: NA, icon: 'ARROW_LEFTRIGHT' },
     op('Remove from All Groups', 'object.vertex_group_remove_from', { use_all_groups: true, use_all_verts: true }, 'X'),
@@ -255,7 +256,6 @@ export function poseTransform(l: Layout): void {
   for (let i = 0; i < 3; i++) c3.prop(chan('scale', 'scale', i, 'XYZ'[i], { def: 1 }));
 }
 
-import { keyState, insertKeyframe, deleteKeyframe, findFCurve } from '../../core/anim';
 function keyStateOf(path: string, i: number): ReturnType<typeof keyState> {
   const o = ob();
   return o ? keyState(o, path, i, app.scene.frameCurrent) : 'NONE';
