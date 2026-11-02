@@ -60,17 +60,26 @@ URL options: `?nosplash` skips the splash screen; `?pyodide=<url>` loads Python 
   - G/R/S with X/Y/Z axis constraints (press twice for local axes) and Shift+X/Y/Z plane constraints.
   - Typed values (e.g. `G X 2 Enter`), Ctrl snapping, Shift precision, R R trackball.
   - Pivot points, transform orientations, and proportional editing (O, mouse wheel to resize).
+  - Snapping to increments, vertices or faces (the magnet toggle; Ctrl inverts it while transforming).
 - The **manipulator** widget for translate, rotate and scale.
 - Object tools
   - Add primitives (plane, cube, circle, UV sphere, icosphere, cylinder, cone, torus, grid), cameras, lamps and empties.
   - Delete, duplicate / duplicate linked, join, parent and clear parent, apply/clear transforms, set origin, smooth/flat shading.
   - Hide/unhide, the 20 **layers** (number keys, M to move objects), Ctrl+L make links, make single user, track constraints, snapping (Shift+S).
   - Ctrl+1…5 subdivision, and keyframes (I / Alt+I).
+- **Sculpt mode**
+  - Draw, Clay, Crease, Flatten, Grab, Inflate/Deflate, Layer, Pinch and Smooth brushes.
+  - Radius, strength, falloff curves, Add/Subtract (Ctrl inverts, Shift smooths), X/Y/Z symmetry and axis locking.
+  - F / Shift+F radial control, `[` / `]` radius, brush hotkeys (X, C, Shift+C, Shift+T, G, I, L, P, S), one undo step per stroke.
+- **Vertex Paint mode**
+  - Mix, Add, Subtract, Multiply, Lighten, Darken and Blur brushes; Ctrl paints the inverted colour, Shift blurs; Set Vertex Colors (Shift+K).
+  - Colours show through modifiers and in renders via the material's "Vertex Color Paint" option.
+- **Particle systems** (Emitter): number, start/end frame, lifetime, emit from faces or verts, normal and random velocity, gravity, size and display percentage. Drawn in the viewport and rendered as soft points.
 - **Edit mode** (Tab)
   - Vertex, edge and face select modes; Alt+RMB edge and face loops; L / Ctrl+L select linked; select more/less/random/non-manifold/loose/by sides/sharp edges.
   - Extrude (E, Alt+E), Ctrl+R **loop cut and slide**, I **inset**, F make edge/face, subdivide (W), merge (Alt+M), remove doubles.
   - Delete menu, dissolve faces, separate (P), split (Y), duplicate, flip/recalculate normals, smooth and randomize vertices, triangulate / tris to quads, mirror.
-  - Limit selection to visible.
+  - Spin (around the 3D cursor), Hide / Hide Unselected / Reveal (H, Shift+H, Alt+H), and limit selection to visible.
 - Tool shelf (T) with the 2.79 tabs, and the properties region (N): transform/median, view, 3D cursor, item and display panels.
 
 ### Other editors
@@ -101,10 +110,10 @@ URL options: `?nosplash` skips the splash screen; `?pyodide=<url>` loads Python 
 These items are shown greyed out in the UI where 2.79 has them:
 
 - **Not available:**
-  - Sculpt / paint modes, curves, surfaces, metaballs, text objects, armatures and lattices.
-  - Particles and physics simulations; Cycles and the Game Engine.
+  - Weight and texture paint, dynamic topology, curves, surfaces, metaballs, text objects, armatures and lattices.
+  - Hair particles and physics simulations (rigid body, cloth, fluid, smoke); Cycles and the Game Engine.
   - The node, NLA, sequencer and movie clip editors.
-  - UV unwrapping, hiding mesh elements in edit mode, knife/bevel/spin/screw tools, vertex and edge snapping, and the Suzanne (Monkey) primitive.
+  - UV unwrapping, knife/bevel/screw/bisect tools, edge and volume snapping, and the Suzanne (Monkey) primitive.
 - **Approximations:**
   - The renderer uses Three.js, not Blender Internal, so lighting and shadows look similar but are not pixel-identical.
   - `.blend` files can't be read or written; documents use this project's own JSON format.

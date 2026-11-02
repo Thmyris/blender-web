@@ -12,10 +12,11 @@ import type { BObject } from '../../core/types';
 import type { View3D } from './view3d';
 import { ORIENT_ITEMS } from './header';
 import { sculptPanels } from './sculpt';
+import { vpaintPanels } from './vpaint';
 
 export const TOOL_TABS: { id: string; label: string; poll: () => boolean }[] = [
   { id: 'Tools', label: 'Tools', poll: () => true },
-  { id: 'Create', label: 'Create', poll: () => app.mode !== 'SCULPT' },
+  { id: 'Create', label: 'Create', poll: () => app.mode === 'OBJECT' || app.mode === 'EDIT' },
   { id: 'Relations', label: 'Relations', poll: () => app.mode === 'OBJECT' },
   { id: 'Animation', label: 'Animation', poll: () => app.mode === 'OBJECT' },
   { id: 'Physics', label: 'Physics', poll: () => app.mode === 'OBJECT' },
@@ -158,6 +159,9 @@ export function toolshelfPanels(view: View3D): PanelDef[] {
   const tab = view.state.toolTab as string;
   const P: PanelDef[] = [];
   const isEdit = app.mode === 'EDIT';
+  if (app.mode === 'VERTEX_PAINT') {
+    return tab === 'Tools' ? [...vpaintPanels(), { id: 'history', label: 'History', draw: (l) => { const r = l.row(true); r.operator('ed.undo', { text: 'Undo' }); r.operator('ed.redo', { text: 'Redo' }); } }] : [];
+  }
   if (app.mode === 'SCULPT') {
     if (tab === 'Tools') return [...sculptPanels(), { id: 'history', label: 'History', draw: (l) => { const r = l.row(true); r.operator('ed.undo', { text: 'Undo' }); r.operator('ed.redo', { text: 'Redo' }); l.operator('ed.undo_history', { text: 'Undo History', align: 'left' }); } }];
     if (tab === 'Grease Pencil') return [];

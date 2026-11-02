@@ -767,14 +767,14 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   {
     id: 'object.mode_set', label: 'Set Object Mode', description: 'Sets the object interaction mode', undo: true, register: true,
     poll: () => !!app.activeObject,
-    props: { mode: { name: 'Mode', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object Mode'], ['EDIT', 'Edit Mode'], ['SCULPT', 'Sculpt Mode']] }, toggle: { name: 'Toggle', type: 'bool', default: false } },
+    props: { mode: { name: 'Mode', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object Mode'], ['EDIT', 'Edit Mode'], ['SCULPT', 'Sculpt Mode'], ['VERTEX_PAINT', 'Vertex Paint']] }, toggle: { name: 'Toggle', type: 'bool', default: false } },
     exec: (_c, p) => {
       const act = app.activeObject!;
-      let mode = p.mode as 'OBJECT' | 'EDIT' | 'SCULPT';
+      let mode = p.mode as 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT';
       if (p.toggle && app.mode === mode) mode = 'OBJECT';
-      if (mode === 'SCULPT') {
-        if (act.type !== 'MESH' || act.hide) { app.report('WARNING', 'Sculpt mode needs a visible mesh object'); return 'CANCELLED'; }
-        app.mode = 'SCULPT';
+      if (mode === 'SCULPT' || mode === 'VERTEX_PAINT') {
+        if (act.type !== 'MESH' || act.hide) { app.report('WARNING', 'This mode needs a visible mesh object'); return 'CANCELLED'; }
+        app.mode = mode;
         app.editObject = act.id;
         act.select = true;
         app.tagAllGeometry();

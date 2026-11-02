@@ -113,6 +113,7 @@ export function buildMeshGeometry(m: EvalMesh, autoSmooth: boolean, angle: numbe
   tris.sort((a, b) => (mats[a.fi] ?? 0) - (mats[b.fi] ?? 0));
   const n = tris.length;
   const pos = new Float32Array(n * 9);
+  const col = m.vcol ? new Float32Array(n * 9) : null;
   const nor = new Float32Array(n * 9);
   const triFace = new Int32Array(n);
   const geom = new BufferGeometry();
@@ -134,6 +135,7 @@ export function buildMeshGeometry(m: EvalMesh, autoSmooth: boolean, angle: numbe
       const vi = f[c[k]];
       const p = m.verts[vi];
       pos.set(p, t * 9 + k * 3);
+      if (col && m.vcol) col.set(m.vcol[vi] ?? [1, 1, 1], t * 9 + k * 3);
       let nn: Vec3 = fn[fi];
       if (smooth) {
         const key = autoSmooth ? `${vi}:${fi}` : `${vi}`;
@@ -158,6 +160,7 @@ export function buildMeshGeometry(m: EvalMesh, autoSmooth: boolean, angle: numbe
   if (n) geom.addGroup(groupStart * 3, (n - groupStart) * 3, curMat);
   geom.setAttribute('position', new BufferAttribute(pos, 3));
   geom.setAttribute('normal', new BufferAttribute(nor, 3));
+  if (col) geom.setAttribute('color', new BufferAttribute(col, 3));
   // generated texture coordinates (Blender "orco": bounding box mapped to -1..1)
   const b = meshBounds(m.verts);
   const orco = new Float32Array(n * 9);
@@ -535,6 +538,21 @@ export class ViewportRenderer {
     return { ...e, data: ma };
   }
 
+  private vcolMats = new Map<Material, MeshPhongMaterial | MeshBasicMaterial>();
+  /** Copy of a material that multiplies its colour by the vertex colours. */
+  private vcolVariant(base: MeshPhongMaterial | MeshBasicMaterial, data: MaterialData | null): Material {
+    let v = this.vcolMats.get(base);
+    if (!v) { v = base.clone(); this.vcolMats.set(base, v); }
+    v.copy(base as never);
+    v.vertexColors = true;
+    // vertex colours replace the diffuse colour (keeping the material's intensity)
+    v.color.setScalar(data ? data.diffuseIntensity : 0.8);
+    v.onBeforeCompile = base.onBeforeCompile;
+    v.customProgramCacheKey = () => `${base.customProgramCacheKey()}-vc`;
+    v.needsUpdate = true;
+    return v;
+  }
+
   /** Solid mode material: in "Textured" shading, textures are shown with solid lighting. */
   private texturedSolid = new Map<string, MeshPhongMaterial>();
 
@@ -607,6 +625,8 @@ export class ViewportRenderer {
               t.customProgramCacheKey = mm.lit.customProgramCacheKey;
               m = t;
             } else m = mm.solid;
+            // vertex colours: shown in Vertex Paint mode, or by materials with "Vertex Color Paint"
+            if (em.vcol && ((app.mode === 'VERTEX_PAINT' && app.editObject === ob.id) || mm.data?.useVertexColorPaint)) m = this.vcolVariant(m as MeshPhongMaterial | MeshBasicMaterial, mm.data);
             mats.push(m);
           }
           e.mesh.material = mats.length === 1 ? mats[0] : mats;
@@ -1001,7 +1021,7 @@ export class ViewportRenderer {
   private renderOutline(cam: Camera): void {
     const meshes: { mesh: Mesh; mat: Material | Material[]; sel: boolean; act: boolean }[] = [];
     let any = false;
-    const editId = app.mode === 'EDIT' || app.mode === 'SCULPT' ? app.editObject : null;
+    const editId = app.mode !== 'OBJECT' ? app.editObject : null;
     for (const e of this.objects.values()) {
       if (!e.mesh || !e.root.visible || !e.mesh.visible) continue;
       const sel = e.ob.select && e.ob.id !== editId;

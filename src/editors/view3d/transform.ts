@@ -809,7 +809,7 @@ function invokeTransform(mode: TransformMode) {
 let viewFromCtx: (ctx: OpContext) => View3D | null = () => null;
 export function setViewResolver(fn: (ctx: OpContext) => View3D | null): void { viewFromCtx = fn; }
 
-const pollTransform = () => app.mode === 'SCULPT' ? false : app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
+const pollTransform = () => app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT' ? false : app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
 
 export const TRANSFORM_OPERATORS: OperatorDef[] = [
   { id: 'transform.translate', label: 'Move', description: 'Translate (move) selected items', undo: true, register: true, poll: pollTransform,

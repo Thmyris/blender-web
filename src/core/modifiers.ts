@@ -14,6 +14,8 @@ export interface EvalMesh {
   faceMat: number[];
   /** When false, every face is rendered smooth (used by edge split). */
   forceSmooth?: boolean;
+  /** Per-vertex colours (vertex paint), if the mesh has them. */
+  vcol?: Vec3[];
 }
 
 export interface ModifierContext {
@@ -41,14 +43,40 @@ export function evalMeshFromData(md: MeshData): EvalMesh {
     looseEdges: md.edges.filter((e) => !faceEdges.has(edgeKey(e[0], e[1]))).map((e) => [e[0], e[1]] as [number, number]),
     faceSmooth: md.faceSmooth.slice(),
     faceMat: md.faceMat.slice(),
+    vcol: md.vcol && md.vcol.length === md.verts.length ? md.vcol.map((c) => [c[0], c[1], c[2]] as Vec3) : undefined,
   };
+}
+
+/** Give a modifier result vertex colours by looking up the nearest input vertex (works for every modifier). */
+function transferVcol(input: EvalMesh, output: EvalMesh): void {
+  if (!input.vcol || (output.vcol && output.vcol.length === output.verts.length)) return;
+  const b = meshBounds(input.verts);
+  const size = Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2], 1e-6);
+  const cell = size / Math.max(1, Math.cbrt(input.verts.length));
+  const grid = new Map<string, number[]>();
+  const key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  input.verts.forEach((v, i) => { const k = key(v[0], v[1], v[2]); const l = grid.get(k); if (l) l.push(i); else grid.set(k, [i]); });
+  output.vcol = output.verts.map((p) => {
+    const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell), cz = Math.floor(p[2] / cell);
+    let best = -1, bd = Infinity;
+    for (let r = 1; r <= 3 && best < 0; r++) {
+      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+        for (const i of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+          const q = input.verts[i];
+          const d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2;
+          if (d < bd) { bd = d; best = i; }
+        }
+      }
+    }
+    return best >= 0 ? input.vcol![best].slice() as Vec3 : [1, 1, 1];
+  });
 }
 
 export function cloneEval(m: EvalMesh): EvalMesh {
   return {
     verts: m.verts.map((v) => [v[0], v[1], v[2]] as Vec3), faces: m.faces.map((f) => f.slice()),
     looseEdges: m.looseEdges.map((e) => [e[0], e[1]] as [number, number]), faceSmooth: m.faceSmooth.slice(),
-    faceMat: m.faceMat.slice(), forceSmooth: m.forceSmooth,
+    faceMat: m.faceMat.slice(), forceSmooth: m.forceSmooth, vcol: m.vcol?.map((c) => [c[0], c[1], c[2]] as Vec3),
   };
 }
 
@@ -429,7 +457,11 @@ export function evaluateModifiers(md: MeshData, mods: Modifier[], ctx: ModifierC
     if (ctx.editMode && !mod.showInEditmode) continue;
     const def = modifierDef(mod.type);
     if (!def?.apply) continue;
-    try { m = def.apply(m, mod, ctx); } catch (err) { console.warn('modifier failed', mod.type, err); }
+    try {
+      const before = m;
+      m = def.apply(m, mod, ctx);
+      if (before.vcol && (!m.vcol || m.vcol.length !== m.verts.length)) { m.vcol = undefined; transferVcol(before, m); }
+    } catch (err) { console.warn('modifier failed', mod.type, err); }
   }
   return m;
 }

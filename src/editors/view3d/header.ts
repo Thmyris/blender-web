@@ -28,7 +28,7 @@ export const MODE_ITEMS: EnumItem[] = [
   { id: 'OBJECT', label: 'Object Mode', icon: 'OBJECT_DATAMODE' },
   { id: 'EDIT', label: 'Edit Mode', icon: 'EDITMODE_HLT' },
   { id: 'SCULPT', label: 'Sculpt Mode', icon: 'SCULPTMODE_HLT' },
-  { id: 'VERTEX_PAINT', label: 'Vertex Paint', icon: 'VPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
+  { id: 'VERTEX_PAINT', label: 'Vertex Paint', icon: 'VPAINT_HLT' },
   { id: 'WEIGHT_PAINT', label: 'Weight Paint', icon: 'WPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
   { id: 'TEXTURE_PAINT', label: 'Texture Paint', icon: 'TPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
 ];
@@ -46,7 +46,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   row.el.style.flex = '0 0 auto';
   // mode
   const ob = app.activeObject;
-  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' || m.id === 'SCULPT') && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
+  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' || m.id === 'SCULPT' || m.id === 'VERTEX_PAINT') && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
   const modeEl = row.prop({
     kind: 'enum', name: 'Mode', items: modeItems, get: () => app.mode, undo: false,
     set: (v) => { void app.callOperator('object.mode_set', { mode: v }, { area: view.area }); },

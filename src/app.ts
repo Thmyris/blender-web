@@ -7,7 +7,7 @@ import { evaluateModifiers, type EvalMesh } from './core/modifiers';
 import { evaluateObjectAnimation } from './core/anim';
 import { ensureArrays, rebuildEdges } from './core/mesh';
 
-export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT';
+export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT';
 
 // ------------------------------------------------------------------ preferences
 
@@ -218,6 +218,11 @@ export class App {
   /** Object being sculpted (Sculpt Mode). */
   get sculptObj(): BObject | null {
     return this.mode === 'SCULPT' && this.editObject ? this.doc.objects[this.editObject] ?? null : null;
+  }
+
+  /** Object being vertex painted. */
+  get paintObj(): BObject | null {
+    return this.mode === 'VERTEX_PAINT' && this.editObject ? this.doc.objects[this.editObject] ?? null : null;
   }
 
   get editObj(): BObject | null {

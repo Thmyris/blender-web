@@ -28,6 +28,8 @@ export interface MeshData {
   activeFace: number;
   /** Edit-mode hidden vertices / faces (H, Alt+H). Absent when nothing is hidden. */
   vhide?: boolean[];
+  /** Vertex colours (linear RGB per vertex), created by Vertex Paint. */
+  vcol?: Color3[];
   fhide?: boolean[];
   materials: (string | null)[];
   autoSmooth: boolean;
@@ -149,6 +151,8 @@ export interface MaterialData {
   specularAlpha: number;
   rayMirror: number;
   useMirror: boolean;
+  /** Use vertex colours as the diffuse colour (Options > Vertex Color Paint). */
+  useVertexColorPaint?: boolean;
   receiveShadows: boolean;
   castShadows: boolean;
   previewType: 'FLAT' | 'SPHERE' | 'CUBE' | 'MONKEY' | 'HAIR' | 'SPHERE_A';
@@ -333,8 +337,16 @@ export interface SculptSettings {
   brushStrength: Partial<Record<SculptBrush, number>>;
 }
 
+export interface VertexPaintSettings {
+  color: Color3;
+  radius: number;
+  strength: number;
+  blend: 'MIX' | 'ADD' | 'SUB' | 'MUL' | 'LIGHTEN' | 'DARKEN' | 'BLUR';
+}
+
 export interface ToolSettings {
   sculpt?: SculptSettings;
+  vpaint?: VertexPaintSettings;
   meshSelectMode: [boolean, boolean, boolean];
   pivotPoint: PivotPoint;
   usePivotPointAlign: boolean;

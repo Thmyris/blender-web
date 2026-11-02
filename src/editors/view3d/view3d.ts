@@ -17,6 +17,7 @@ import { toolshelfPanels, npanelPanels, redoPanels, TOOL_TABS } from './panels';
 import { addMenu, objectMenu, meshMenu, selectMenu, viewMenu } from './menus';
 import { drawView3DHeader } from './header';
 import { startSculptStroke, sculptKey, sculptMenu } from './sculpt';
+import { startPaintStroke, vpaintKey, vpaintMenu, fillVertexColors } from './vpaint';
 
 export interface OverlayShape {
   kind: 'rect' | 'circle' | 'lasso' | 'cross';
@@ -269,6 +270,7 @@ export class View3D extends Editor {
       pulldown({ label: 'Add', items: () => addMenu() }, area, true),
       app.mode === 'EDIT' ? pulldown({ label: 'Mesh', items: () => meshMenu() }, area, true)
         : app.mode === 'SCULPT' ? pulldown({ label: 'Sculpt', items: () => sculptMenu() }, area, true)
+          : app.mode === 'VERTEX_PAINT' ? pulldown({ label: 'Paint', items: () => vpaintMenu() }, area, true)
           : pulldown({ label: 'Object', items: () => objectMenu() }, area, true),
     );
     drawView3DHeader(this, l);
@@ -278,6 +280,10 @@ export class View3D extends Editor {
 
   override onKey(e: KeyboardEvent): boolean {
     if (app.mode === 'SCULPT') return sculptKey(this, e);
+    if (app.mode === 'VERTEX_PAINT') {
+      if (e.shiftKey && e.code === 'KeyK') { fillVertexColors(); return true; }
+      return vpaintKey(this, e);
+    }
     return false;
   }
 
@@ -301,7 +307,7 @@ export class View3D extends Editor {
   private get actionButton(): number { return app.prefs.selectMouse === 'RIGHT' ? 0 : 2; }
 
   private onHover(e: PointerEvent): void {
-    if (app.mode === 'SCULPT') { this.brushPos = this.local(e); this.requestRender(); }
+    if (app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') { this.brushPos = this.local(e); this.requestRender(); }
     if (app.modal || e.buttons) return;
     const p = this.local(e);
     const hit = this.display.manipulator && this.renderer ? manipulatorHit(this, p.x, p.y) : null;
@@ -324,7 +330,12 @@ export class View3D extends Editor {
       startSculptStroke(this, e);
       return;
     }
-    if (app.mode === 'SCULPT' && e.button === this.selectButton) { e.preventDefault(); return; }
+    if (app.mode === 'VERTEX_PAINT' && e.button === this.actionButton) {
+      e.preventDefault();
+      startPaintStroke(this, e);
+      return;
+    }
+    if ((app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') && e.button === this.selectButton) { e.preventDefault(); return; }
     if (e.button === this.actionButton) {
       e.preventDefault();
       // manipulator

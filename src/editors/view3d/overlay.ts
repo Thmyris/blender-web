@@ -7,6 +7,7 @@ import { app } from '../../app';
 import { objectKeyFrames } from '../../core/anim';
 import { orientationMatrix, axisVector } from './transform';
 import { sculptSettings } from './sculpt';
+import { vpaintSettings } from './vpaint';
 import type { View3D } from './view3d';
 
 export interface ManipHit { kind: 'translate' | 'rotate' | 'scale'; axis: number | 'view' | 'trackball' }
@@ -99,7 +100,7 @@ function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: nu
 
 export function manipulatorHit(view: View3D, x: number, y: number): ManipHit | null {
   const d = view.display;
-  if (!d.manipulator || app.mode === 'SCULPT') return null;
+  if (!d.manipulator || app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') return null;
   const g = manipGeometry(view);
   if (!g) return null;
   const dc = Math.hypot(x - g.c.x, y - g.c.y);
@@ -152,7 +153,7 @@ function arrowHead(ctx: CanvasRenderingContext2D, from: { x: number; y: number }
 
 function drawManipulator(ctx: CanvasRenderingContext2D, view: View3D): void {
   const d = view.display;
-  if (!d.manipulator || d.showOnlyRender || app.mode === 'SCULPT') return;
+  if (!d.manipulator || d.showOnlyRender || app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') return;
   const g = manipGeometry(view);
   if (!g) return;
   const hover = view.manipHover;
@@ -352,13 +353,13 @@ export function drawOverlay(view: View3D): void {
     }
     drawCursor(ctx, view);
     // sculpt brush circle and radial control
-    if (app.mode === 'SCULPT') {
-      const sc = sculptSettings();
+    if (app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT') {
+      const sc = app.mode === 'SCULPT' ? sculptSettings() : { ...vpaintSettings(), direction: 'ADD' };
       const rc = view.radialControl;
       const pos = rc ? rc.center : view.brushPos;
       if (pos) {
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = sc.direction === 'SUBTRACT' ? 'rgba(120,170,255,0.9)' : 'rgba(255,110,110,0.9)';
+        ctx.strokeStyle = app.mode === 'VERTEX_PAINT' ? '#ffffff' : sc.direction === 'SUBTRACT' ? 'rgba(120,170,255,0.9)' : 'rgba(255,110,110,0.9)';
         ctx.beginPath(); ctx.arc(pos.x, pos.y, sc.radius, 0, Math.PI * 2); ctx.stroke();
         if (rc) {
           ctx.fillStyle = 'rgba(255,255,255,0.15)';

@@ -321,7 +321,7 @@ export function materialPanels(ctx: PropsCtx): PanelDef[] {
       c2.prop(naBool('Face Textures'));
       c2.prop(naBool('Face Textures Alpha'));
       c2.separator();
-      c2.prop(naBool('Vertex Color Paint'));
+      c2.prop(bprop(MA, 'useVertexColorPaint', { name: 'Vertex Color Paint', description: 'Replace object base color with vertex colors (multiplied with the material intensity)', notify: ['data'] }));
       c2.prop(naBool('Vertex Color Light'));
       c2.prop(naBool('Object Color'));
       c2.prop(naBool('UV Project'));

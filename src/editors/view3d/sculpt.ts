@@ -274,8 +274,8 @@ export function startSculptStroke(view: View3D, e: PointerEvent): void {
 }
 
 /** F (radius) / Shift+F (strength): interactive brush size like Blender's radial control. */
-export function startRadialControl(view: View3D, which: 'radius' | 'strength'): void {
-  const s = sculptSettings();
+export function startRadialControl(view: View3D, which: 'radius' | 'strength', target?: { radius: number; strength: number }): void {
+  const s = target ?? sculptSettings();
   const r0 = view.canvasRect();
   const center = view.brushPos ?? { x: app.mouse.x - r0.left, y: app.mouse.y - r0.top };
   const orig = which === 'radius' ? s.radius : s.strength;

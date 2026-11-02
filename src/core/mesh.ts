@@ -27,6 +27,7 @@ export function ensureArrays(m: MeshData): void {
   if (m.faceSmooth.length !== nf) m.faceSmooth = resize(m.faceSmooth, nf, m.faceSmooth.length ? m.faceSmooth[m.faceSmooth.length - 1] : false);
   if (m.faceMat.length !== nf) m.faceMat = resize(m.faceMat, nf, 0);
   if (m.activeFace >= nf) m.activeFace = -1;
+  if (m.vcol && m.vcol.length !== nv) m.vcol = resize(m.vcol, nv, [1, 1, 1] as [number, number, number]);
   // hidden flags are dropped (everything revealed) when the topology no longer matches
   if (m.vhide && (m.vhide.length !== nv || (m.fhide?.length ?? -1) !== nf)) { delete m.vhide; delete m.fhide; }
 }
