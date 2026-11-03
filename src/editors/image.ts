@@ -2,7 +2,7 @@
 // MMB), edits the UV layout of the mesh in edit mode (selection, transforms, UV tools), paints on
 // images in Paint mode, and has a tool shelf (T) and properties region (N) like Blender 2.79.
 
-import { app } from '../app';
+import { app, type ModalHandler } from '../app';
 import { Editor, registerEditor } from '../screen/editor';
 import type { Area } from '../screen/screen';
 import { h, trackDrag } from '../ui/dom';
@@ -11,7 +11,7 @@ import { PanelRegion, type Layout } from '../ui/layout';
 import { renderResult, renderListeners, renderProgress } from '../render/render';
 import type { BImage } from '../core/types';
 import { activeUVIndex } from '../core/uvdata';
-import { getImage, imageCanvas, imageList, imageUsers, onImagesChanged } from '../paint/images';
+import { commitImage, getImage, imageCanvas, imageContext, imageList, imagePixelsChanged, imageUsers, onImagesChanged } from '../paint/images';
 import { defaultUVDisplay, drawCursor2D, drawUVBackground, drawUVs, type UVDisplay } from './uvedit/uvdraw';
 import { uvContext, uvSettings, selectedCorners, isSync } from './uvedit/uvsel';
 import {
@@ -142,6 +142,9 @@ export class ImageEditor extends Editor implements UVEditorView {
     return { x0, y0: y0 + hh, w, h: hh };
   }
 
+  /** UVMapping for the UV drawing code. */
+  toScreen(u: number, v: number): [number, number] { return this.uvToScreen(u, v); }
+
   uvToScreen(u: number, v: number): [number, number] {
     const f = this.frame();
     return [f.x0 + u * f.w, f.y0 - v * f.h];
@@ -241,7 +244,7 @@ export class ImageEditor extends Editor implements UVEditorView {
     this.draw();
   }
 
-  override refresh(): void {
+  override refresh(_flags?: Set<string>): void {
     this.redraw();
     if (this.state.showToolshelf) this.toolRegion.refresh();
     if (this.state.showNPanel) this.nRegion.refresh();
@@ -406,7 +409,7 @@ export class ImageEditor extends Editor implements UVEditorView {
       if (app.modal || !uvContext()) return;
       app.mouse.x = sx; app.mouse.y = sy;
       startUVTransform(this, 'TRANSLATION', { releaseConfirm: true });
-      app.modal?.onEvent(ev);
+      (app.modal as ModalHandler | null)?.onEvent(ev);
     };
     const up = (ev: PointerEvent) => { if (ev.button === button) cleanup(); };
     const cleanup = () => { window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); };
@@ -454,6 +457,32 @@ export class ImageEditor extends Editor implements UVEditorView {
   private circleState(): { radius: number } {
     const st = this.state;
     return { get radius() { return st.circleRadius as number; }, set radius(v: number) { st.circleRadius = v; } };
+  }
+
+  startBorder(): void { if (this.editingUVs()) startUVBorderSelect(this); }
+
+  startCircle(): void { if (this.editingUVs()) startUVCircleSelect(this, this.circleState()); }
+
+  pickLinkedAtMouse(deselect: boolean): void { this.pickLinked(deselect); }
+
+  /** Image > Invert: invert the RGB channels (all, or the flagged ones) and/or alpha. */
+  invertImage(rgb: boolean | [boolean, boolean, boolean], alpha: boolean): void {
+    const img = this.image;
+    if (!img) return;
+    const ch: [boolean, boolean, boolean] = Array.isArray(rgb) ? rgb : [rgb, rgb, rgb];
+    const ctx = imageContext(img);
+    const id = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      for (let k = 0; k < 3; k++) if (ch[k]) d[i + k] = 255 - d[i + k];
+      if (alpha) d[i + 3] = 255 - d[i + 3];
+    }
+    ctx.putImageData(id, 0, 0);
+    imagePixelsChanged(img);
+    commitImage(img);
+    app.pushUndo('Invert Image');
+    app.notify('view');
+    this.redraw();
   }
 
   private pickLinked(deselect: boolean): void {

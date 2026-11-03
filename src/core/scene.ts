@@ -4,7 +4,7 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import type {
   BObject, CameraData, Doc, LampData, MaterialData, MeshData, ObjectType, RenderSettings, RotationMode,
-  Scene, TextBlock, TextureData, TextureSlot, ToolSettings, Vec3, WorldData, DataCollection, LampType,
+  Scene, TextBlock, TextureData, TextureSlot, ToolSettings, Vec3, WorldData, DataCollection, LampType, Constraint,
 } from './types';
 import { createMeshData, primCube, selectAllMesh } from './mesh';
 import { primitiveUVs, setInitialUVs } from './uvdata';

@@ -24,6 +24,7 @@ import { showSplash } from './ui/splash';
 import { setUnitSettings } from './ui/format';
 import { cancelRender } from './render/render';
 import { onFontLoaded } from './core/text3d';
+import './core/curvedeform';
 import type { Area } from './screen/screen';
 
 // editors (each registers itself)

@@ -39,6 +39,7 @@ const MODIFIER_ITEMS: [string, string][] = [
 const CONSTRAINT_ITEMS: [string, string][] = [
   ['COPY_LOCATION', 'Copy Location'], ['COPY_ROTATION', 'Copy Rotation'], ['COPY_SCALE', 'Copy Scale'], ['LIMIT_LOCATION', 'Limit Location'],
   ['LIMIT_ROTATION', 'Limit Rotation'], ['LIMIT_SCALE', 'Limit Scale'], ['TRACK_TO', 'Track To'], ['DAMPED_TRACK', 'Damped Track'], ['CHILD_OF', 'Child Of'],
+  ['FOLLOW_PATH', 'Follow Path'], ['CLAMP_TO', 'Clamp To'],
 ];
 
 // ------------------------------------------------------------------ add primitives
@@ -1138,6 +1139,7 @@ export function newConstraint(type: ConstraintType, ob: BObject, target: string 
   const labels: Record<ConstraintType, string> = {
     COPY_LOCATION: 'Copy Location', COPY_ROTATION: 'Copy Rotation', COPY_SCALE: 'Copy Scale', LIMIT_LOCATION: 'Limit Location',
     LIMIT_ROTATION: 'Limit Rotation', LIMIT_SCALE: 'Limit Scale', TRACK_TO: 'Track To', DAMPED_TRACK: 'Damped Track', CHILD_OF: 'Child Of',
+    FOLLOW_PATH: 'Follow Path', CLAMP_TO: 'Clamp To',
   };
   const names = new Set(ob.constraints.map((c) => c.name));
   let name = labels[type];
@@ -1158,6 +1160,10 @@ export function newConstraint(type: ConstraintType, ob: BObject, target: string 
       const inv = target && app.doc.objects[target] ? app.matrices.world(app.doc.objects[target]).clone().invert().toArray() : new Matrix4().toArray();
       return { ...base, inverse: inv };
     }
+    case 'FOLLOW_PATH':
+      return { ...base, offset: 0, offsetFactor: 0, useFixedLocation: false, useCurveFollow: false, useCurveRadius: false, forwardAxis: 'FORWARD_Y', upAxis: 'UP_Z' };
+    case 'CLAMP_TO':
+      return { ...base, mainAxis: 'CLAMPTO_AUTO', useCyclic: false };
   }
 }
 
