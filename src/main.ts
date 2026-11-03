@@ -9,12 +9,13 @@ import { OBJECT_OPERATORS } from './ops/object';
 import { MESH_OPERATORS } from './ops/mesh';
 import { VIEW_OPERATORS } from './ops/view';
 import { SCREEN_OPERATORS } from './ops/screen';
-import { MESH_TOOL_OPERATORS, registerMeshToolKeys } from './ops/meshtools';
+import { MESH_TOOL_OPERATORS, MESH_EXTRA_OPERATORS, registerMeshToolKeys } from './ops/meshtools';
 import { registerUV } from './ops/uv';
 import { initEditorsExt } from './editors/ext_init';
 import { initRig } from './ops/rig_init';
 import { initCycles } from './render/cycles';
 import { PHYSICS_OPERATORS } from './sim';
+import { initCurves } from './ops/curve_init';
 import { dispatchKey } from './keymap';
 import { menuKeyDown, menusOpen, closeAllMenus, hideTooltip } from './ui/menu';
 import { hoveredWidget } from './ui/layout';
@@ -39,13 +40,14 @@ import './editors/userprefs';
 
 const a = createApp();
 for (const def of [...TRANSFORM_OPERATORS, ...OBJECT_OPERATORS, ...MESH_OPERATORS, ...VIEW_OPERATORS, ...SCREEN_OPERATORS]) a.registerOperator(def);
-for (const def of MESH_TOOL_OPERATORS) a.registerOperator(def);
+for (const def of [...MESH_TOOL_OPERATORS, ...MESH_EXTRA_OPERATORS]) a.registerOperator(def);
 registerMeshToolKeys();
 registerUV();
 initEditorsExt();
 initRig(a);
 initCycles();
 for (const def of PHYSICS_OPERATORS) a.registerOperator(def);
+initCurves(a);
 
 // regenerate text objects once the font has loaded
 onFontLoaded(() => app.tagAllGeometry());

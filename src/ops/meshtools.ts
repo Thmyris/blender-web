@@ -11,6 +11,10 @@ import { registerKeymap, type KeyItem } from '../keymap';
 import { viewOf, isEditMesh } from './common';
 import { meshDone, startBevelModal } from '../editors/view3d/meshmodal';
 import { startKnife, knifeProject } from '../editors/view3d/knife';
+import {
+  beautifyFaces, bisectMesh, bridgeEdgeLoops, connectVertexPath, edgeSplitSelected, fillLoops, gridFill, rotateEdges,
+  snapToSymmetry, symmetrize, unsubdivide, type SymDirection,
+} from '../core/meshtools';
 
 export const md = (): MeshData => app.editMesh!;
 export const selMode = (): SelectMode => selectModeOf(app.scene.toolSettings.meshSelectMode);
@@ -97,6 +101,116 @@ export const MESH_TOOL_OPERATORS: OperatorDef[] = [
   }),
 ];
 
+// ------------------------------------------------------------------ edge / face / vertex tools
+
+const SYM_DIRS: [string, string][] = [['NEGATIVE_X', '-X to +X'], ['POSITIVE_X', '+X to -X'], ['NEGATIVE_Y', '-Y to +Y'], ['POSITIVE_Y', '+Y to -Y'], ['NEGATIVE_Z', '-Z to +Z'], ['POSITIVE_Z', '+Z to -Z']];
+
+/** Run an algorithm returning an error message (or null on success). */
+function errOrDone(err: string | null): 'FINISHED' | 'CANCELLED' {
+  if (err) { app.report('ERROR', err); return 'CANCELLED'; }
+  return done();
+}
+
+/** Run an algorithm returning a count of changed elements. */
+function countOrDone(n: number, none: string): 'FINISHED' | 'CANCELLED' {
+  if (!n) { app.report('WARNING', none); return 'CANCELLED'; }
+  return done();
+}
+
+export const MESH_EXTRA_OPERATORS: OperatorDef[] = [
+  editOp({
+    id: 'mesh.bridge_edge_loops', label: 'Bridge Edge Loops', description: 'Make faces between two or more edge loops', poll: edgeSel,
+    props: {
+      number_cuts: { name: 'Number of Cuts', type: 'int', default: 0, min: 0, max: 1000 },
+      twist_offset: { name: 'Twist', type: 'int', default: 0, min: -1000, max: 1000 },
+      smoothness: { name: 'Smoothness', type: 'float', default: 1, min: 0, max: 1000 },
+    },
+    exec: (_c, p) => errOrDone(bridgeEdgeLoops(md(), { cuts: Number(p.number_cuts), twist: Number(p.twist_offset), smoothness: Number(p.smoothness) })),
+  }),
+  editOp({
+    id: 'mesh.fill', label: 'Fill', description: 'Fill a selected edge loop with faces', poll: edgeSel,
+    props: { use_beauty: { name: 'Beauty', type: 'bool', default: true, description: 'Use best triangulation division' } },
+    exec: (_c, p) => countOrDone(fillLoops(md(), !!p.use_beauty), 'No closed edge loop to fill'),
+  }),
+  editOp({
+    id: 'mesh.beautify_fill', label: 'Beautify Faces', description: 'Rearrange some faces to try to get less degenerated geometry',
+    props: { angle_limit: { name: 'Max Angle', type: 'float', default: Math.PI, min: 0, max: Math.PI, subtype: 'ANGLE' } },
+    exec: (_c, p) => { beautifyFaces(md(), Number(p.angle_limit)); return done(); },
+  }),
+  editOp({
+    id: 'mesh.fill_grid', label: 'Grid Fill', description: 'Fill grid from two loops', poll: edgeSel,
+    props: { span: { name: 'Span', type: 'int', default: 1, min: 1, max: 1000 }, offset: { name: 'Offset', type: 'int', default: 0, min: -1000, max: 1000 } },
+    exec: (_c, p) => errOrDone(gridFill(md(), Number(p.span), Number(p.offset))),
+  }),
+  editOp({
+    id: 'mesh.edge_rotate', label: 'Rotate Selected Edge', description: 'Rotate selected edge or adjoining faces', poll: edgeSel,
+    props: { use_ccw: { name: 'Counter Clockwise', type: 'bool', default: false } },
+    exec: (_c, p) => countOrDone(rotateEdges(md(), !p.use_ccw), 'Could not rotate the selected edges (each needs exactly two adjacent faces)'),
+  }),
+  editOp({
+    id: 'mesh.edge_split', label: 'Edge Split', description: 'Split selected edges so that each neighbor face gets its own copy', poll: edgeSel,
+    exec: () => countOrDone(edgeSplitSelected(md()), 'No edges to split'),
+  }),
+  editOp({
+    id: 'mesh.vert_connect_path', label: 'Vertex Connect Path', description: 'Connect vertices by their selection order, creating edges, splitting faces',
+    exec: () => countOrDone(connectVertexPath(md()), 'Select at least two vertices to connect'),
+  }),
+  editOp({
+    id: 'mesh.unsubdivide', label: 'Un-Subdivide', description: 'UnSubdivide selected edges & faces',
+    props: { iterations: { name: 'Iterations', type: 'int', default: 2, min: 1, max: 1000 } },
+    exec: (_c, p) => errOrDone(unsubdivide(md(), Number(p.iterations), true)),
+  }),
+  editOp({
+    id: 'mesh.symmetrize', label: 'Symmetrize', description: 'Enforce symmetry (both form and topological) across an axis',
+    props: {
+      direction: { name: 'Direction', type: 'enum', default: 'NEGATIVE_X', items: SYM_DIRS },
+      threshold: { name: 'Threshold', type: 'float', default: 0.0001, min: 0, max: 10 },
+    },
+    exec: (_c, p) => {
+      const dir = p.direction as SymDirection;
+      // like Blender, first cut faces crossing the mirror plane so none are lost
+      const no: Vec3 = dir.endsWith('X') ? [1, 0, 0] : dir.endsWith('Y') ? [0, 1, 0] : [0, 0, 1];
+      bisectMesh(md(), [0, 0, 0], no, { threshold: Number(p.threshold) });
+      return symmetrize(md(), dir, Number(p.threshold)) ? done() : 'CANCELLED';
+    },
+  }),
+  editOp({
+    id: 'mesh.symmetry_snap', label: 'Snap to Symmetry', description: 'Snap vertex pairs to their mirrored locations',
+    props: {
+      direction: { name: 'Direction', type: 'enum', default: 'NEGATIVE_X', items: SYM_DIRS },
+      threshold: { name: 'Threshold', type: 'float', default: 0.05, min: 0, max: 10 },
+      factor: { name: 'Factor', type: 'float', default: 0.5, min: 0, max: 1 },
+      use_center: { name: 'Center', type: 'bool', default: true, description: 'Snap middle vertices to the axis center' },
+    },
+    exec: (_c, p) => countOrDone(snapToSymmetry(md(), p.direction as SymDirection, Number(p.threshold), Number(p.factor), !!p.use_center), 'No mirrored vertex pairs found'),
+  }),
+  editOp({
+    id: 'mesh.bisect', label: 'Bisect', description: 'Cut geometry along a plane (through the 3D cursor, facing the view; adjust in the redo panel)',
+    props: {
+      plane_co: { name: 'Plane Point', type: 'vector', default: [0, 0, 0], size: 3, subtype: 'TRANSLATION' },
+      plane_no: { name: 'Plane Normal', type: 'vector', default: [1, 0, 0], size: 3, subtype: 'XYZ' },
+      use_fill: { name: 'Fill', type: 'bool', default: false, description: 'Fill in the cut' },
+      clear_inner: { name: 'Clear Inner', type: 'bool', default: false, description: 'Remove geometry behind the plane' },
+      clear_outer: { name: 'Clear Outer', type: 'bool', default: false, description: 'Remove geometry in front of the plane' },
+      threshold: { name: 'Axis Threshold', type: 'float', default: 0.0001, min: 0, max: 10 },
+    },
+    invoke: (ctx, p) => {
+      p.plane_co = app.scene.cursor.slice();
+      const view = viewOf(ctx);
+      // a vertical cut as seen from the view: the plane normal is the view's right vector
+      if (view) { const r = new Vector3(1, 0, 0).applyQuaternion(view.view.rot); p.plane_no = [r.x, r.y, r.z]; }
+      return app.operator('mesh.bisect')!.exec!(ctx, p);
+    },
+    exec: (_c, p) => {
+      const ok = bisectMesh(md(), toLocal(p.plane_co as Vec3), normalToLocal(p.plane_no as Vec3), {
+        fill: !!p.use_fill, clearInner: !!p.clear_inner, clearOuter: !!p.clear_outer, threshold: Number(p.threshold),
+      });
+      if (!ok) { app.report('WARNING', 'The plane does not cut the selection'); return 'CANCELLED'; }
+      return done();
+    },
+  }),
+];
+
 void edgeSel;
 void ({} as OpContext);
 void ({} as OpProps);
@@ -112,5 +226,8 @@ export function registerMeshToolKeys(): void {
     E('KeyB', 'mesh.bevel', { vertex_only: true }, { ctrl: true, shift: true }),
     E('KeyK', 'mesh.knife_tool', { use_occlude_geometry: true, only_selected: false }),
     E('KeyK', 'mesh.knife_tool', { use_occlude_geometry: true, only_selected: true }, { shift: true }),
+    E('KeyF', 'mesh.fill', {}, { alt: true }),
+    E('KeyF', 'mesh.beautify_fill', {}, { alt: true, shift: true }),
+    E('KeyJ', 'mesh.vert_connect_path'),
   ]);
 }
