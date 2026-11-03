@@ -12,6 +12,7 @@
     "test": "npx --yes esbuild@0.25.0 scripts/test-meshops.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/meshops-test.mjs && node node_modules/.cache/meshops-test.mjs"
   },
   "dependencies": {
+    "cannon-es": "0.20.0",
     "three": "^0.187.0"
   },
   "devDependencies": {

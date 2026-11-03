@@ -9,6 +9,7 @@ import { newModifier, modifierDef } from '../core/modifiers';
 import { renameData, createMaterial } from '../core/scene';
 import { rebuildEdges, ensureArrays } from '../core/mesh';
 import type { ModifierType } from '../core/types';
+import { CYCLES_PY, cyclesPyGet, cyclesPySet, setEngine } from '../render/cycles/python';
 
 const PYODIDE_VERSION = '0.26.4';
 /** CDN location of Pyodide; can be overridden with ?pyodide=<url> (e.g. a self-hosted copy). */
@@ -113,6 +114,7 @@ const bridge = {
       case 'resolution_y': return s.render.resolutionY;
       case 'resolution_percentage': return s.render.resolutionPercentage;
       case 'fps': return s.fps;
+      case 'engine': return s.render.engine;
       case 'layers': return s.layers.slice();
       default: throw new Error(`'Scene' object has no attribute '${attr}'`);
     }
@@ -131,11 +133,14 @@ const bridge = {
       case 'resolution_y': s.render.resolutionY = Number(v); break;
       case 'resolution_percentage': s.render.resolutionPercentage = Number(v); break;
       case 'fps': s.fps = Number(v); break;
+      case 'engine': setEngine(v); break;
       case 'layers': s.layers = (v as boolean[]).slice(0, 20).map(Boolean); break;
       default: throw new Error(`'Scene' object attribute '${attr}' is read-only or unknown`);
     }
     changed();
   },
+  cycles_get: (attr: string): unknown => cyclesPyGet(attr),
+  cycles_set(attr: string, value: unknown): void { cyclesPySet(attr, toJs(value)); changed(); },
   op(id: string, kwargsJson: string): string {
     const def = app.operator(id);
     if (!def) throw new Error(`Calling operator "bpy.ops.${id}" error, could not be found`);
@@ -429,6 +434,7 @@ class Object:
     def __hash__(self): return hash(self.name)
     def __repr__(self): return 'bpy.data.objects["%s"]' % self.name
 
+${CYCLES_PY}
 class _Render:
     def __getattr__(self, a): return _bw.scene_get(a)
     def __setattr__(self, a, v): _bw.scene_set(a, v)
@@ -437,6 +443,7 @@ class Scene:
     def __getattr__(self, a):
         if a == 'objects': return _Collection(lambda: _bw.objects().to_py(), Object)
         if a == 'render': return _Render()
+        if a == 'cycles': return _CyclesSettings()
         if a == 'cursor_location': return Vector(_bw.scene_get(a).to_py(), lambda v: _bw.scene_set('cursor_location', v))
         if a == 'camera':
             c = _bw.scene_get('camera'); return Object(c) if c else None

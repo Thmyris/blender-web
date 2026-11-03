@@ -22,8 +22,8 @@ export function registerEditor(cls: EditorClass): void {
 export const EDITOR_MENU: { title: string; types: string[] }[] = [
   { title: 'Scripting', types: ['CONSOLE', 'FILE_BROWSER', 'INFO', 'USER_PREFERENCES'] },
   { title: 'Data', types: ['OUTLINER', 'PROPERTIES'] },
-  { title: 'Editing', types: ['TEXT_EDITOR', 'IMAGE_EDITOR'] },
-  { title: 'Animation', types: ['DOPESHEET_EDITOR', 'GRAPH_EDITOR', 'TIMELINE', 'VIEW_3D'] },
+  { title: 'Editing', types: ['LOGIC_EDITOR', 'NODE_EDITOR', 'TEXT_EDITOR', 'CLIP_EDITOR', 'SEQUENCE_EDITOR', 'IMAGE_EDITOR'] },
+  { title: 'Animation', types: ['NLA_EDITOR', 'DOPESHEET_EDITOR', 'GRAPH_EDITOR', 'TIMELINE', 'VIEW_3D'] },
 ];
 
 export abstract class Editor {

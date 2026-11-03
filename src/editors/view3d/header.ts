@@ -6,6 +6,7 @@ import type { Layout, EnumItem } from '../../ui/layout';
 import { h } from '../../ui/dom';
 import type { View3D } from './view3d';
 import type { Shading } from './draw';
+import { hasEditType } from './edittypes';
 
 export const SHADING_ITEMS: EnumItem[] = [
   { id: 'RENDERED', label: 'Rendered', icon: 'RENDERED' },
@@ -29,8 +30,9 @@ export const MODE_ITEMS: EnumItem[] = [
   { id: 'EDIT', label: 'Edit Mode', icon: 'EDITMODE_HLT' },
   { id: 'SCULPT', label: 'Sculpt Mode', icon: 'SCULPTMODE_HLT' },
   { id: 'VERTEX_PAINT', label: 'Vertex Paint', icon: 'VPAINT_HLT' },
-  { id: 'WEIGHT_PAINT', label: 'Weight Paint', icon: 'WPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
+  { id: 'WEIGHT_PAINT', label: 'Weight Paint', icon: 'WPAINT_HLT' },
   { id: 'TEXTURE_PAINT', label: 'Texture Paint', icon: 'TPAINT_HLT', disabled: true, description: 'Not available in blender-web' },
+  { id: 'POSE', label: 'Pose Mode', icon: 'POSE_HLT' },
 ];
 
 export const ORIENT_ITEMS: EnumItem[] = [
@@ -46,7 +48,8 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   row.el.style.flex = '0 0 auto';
   // mode
   const ob = app.activeObject;
-  const modeItems = MODE_ITEMS.map((m) => ((m.id === 'EDIT' || m.id === 'SCULPT' || m.id === 'VERTEX_PAINT') && ob?.type !== 'MESH' ? { ...m, disabled: true } : m));
+  // like 2.79, only the modes of the active object's type are listed (armatures: Object / Edit / Pose)
+  const modeItems = MODE_ITEMS.filter((m) => (ob?.type === 'ARMATURE' ? ['OBJECT', 'EDIT', 'POSE'].includes(m.id) : m.id !== 'POSE')).map((m) => ((m.id === 'EDIT' ? !(ob && (ob.type === 'MESH' || ob.type === 'FONT' || hasEditType(ob.type))) : (m.id === 'SCULPT' || m.id === 'VERTEX_PAINT' || m.id === 'WEIGHT_PAINT') && ob?.type !== 'MESH') ? { ...m, disabled: true } : m));
   const modeEl = row.prop({
     kind: 'enum', name: 'Mode', items: modeItems, get: () => app.mode, undo: false,
     set: (v) => { void app.callOperator('object.mode_set', { mode: v }, { area: view.area }); },
@@ -79,7 +82,7 @@ export function drawView3DHeader(view: View3D, l: Layout): void {
   orientEl.style.flex = '0 0 auto';
   orientEl.style.width = '76px';
   // edit mode: select mode + occlude
-  if (app.mode === 'EDIT') {
+  if (app.mode === 'EDIT' && app.editMesh) {
     const sm = l.row(true);
     sm.el.style.flex = '0 0 auto';
     const names = ['Vertex select mode', 'Edge select mode', 'Face select mode'];

@@ -11,6 +11,7 @@ import { polyNormal, vertFaces } from '../../core/mesh';
 import { insertKeyframe } from '../../core/anim';
 import { evalEdges } from '../../core/modifiers';
 import type { View3D } from './view3d';
+import { activeEditType, editTypeHasSelection, type EditTypeHandler, type TransformPoint } from './edittypes';
 
 export type TransformMode = 'TRANSLATION' | 'ROTATION' | 'RESIZE' | 'TRACKBALL' | 'SHRINK_FATTEN' | 'TOSPHERE';
 
@@ -24,6 +25,8 @@ export interface TransformElems {
   editOb: BObject | null;
   meshWorld: Matrix4;
   meshWorldInv: Matrix4;
+  /** Elements of a non-mesh element mode (curves, metaballs, armatures, ...; see edittypes.ts). */
+  edit?: { handler: EditTypeHandler; points: TransformPoint[]; active: Vector3 | null } | null;
 }
 
 const AXES = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)];
@@ -41,6 +44,16 @@ function transformObjects(): BObject[] {
 
 export function gatherElements(propSize = 0, connected = false): TransformElems {
   const out: TransformElems = { objects: [], verts: [], mesh: null, editOb: null, meshWorld: new Matrix4(), meshWorldInv: new Matrix4() };
+  const et = activeEditType();
+  if (et) {
+    const points = et.handler.transformPoints(et.ob, propSize);
+    for (const p of points) p.factor = p.selected ? 1 : 0;
+    out.edit = { handler: et.handler, points, active: et.handler.activePoint?.(et.ob) ?? null };
+    out.editOb = et.ob;
+    out.meshWorld = app.matrices.world(et.ob).clone();
+    out.meshWorldInv = out.meshWorld.clone().invert();
+    return out;
+  }
   const md = app.editMesh;
   if (md && app.editObj) {
     const ob = app.editObj;
@@ -115,6 +128,16 @@ function falloff(type: string, d: number): number {
 }
 
 export function updatePropFactors(el: TransformElems, size: number, type: string): void {
+  if (el.edit) {
+    const sel = el.edit.points.filter((e) => e.selected);
+    for (const e of el.edit.points) {
+      if (e.selected) { e.factor = 1; continue; }
+      let d = Infinity;
+      for (const s of sel) d = Math.min(d, s.world.distanceTo(e.world));
+      e.factor = size > 0 ? falloff(type, d / size) : 0;
+    }
+    return;
+  }
   if (!el.mesh) return;
   const sel = el.verts.filter((v) => el.mesh!.vsel[v.index]);
   for (const v of el.verts) {
@@ -128,8 +151,9 @@ export function updatePropFactors(el: TransformElems, size: number, type: string
 /** Centre for the pivot point setting. */
 export function pivotCenter(el: TransformElems, pivot: PivotPoint): Vector3 {
   if (pivot === 'CURSOR') return new Vector3(...app.scene.cursor);
-  const pts: Vector3[] = el.mesh ? el.verts.filter((v) => el.mesh!.vsel[v.index]).map((v) => v.world) : el.objects.map((o) => o.center);
+  const pts: Vector3[] = el.edit ? el.edit.points.filter((e) => e.selected).map((e) => e.world) : el.mesh ? el.verts.filter((v) => el.mesh!.vsel[v.index]).map((v) => v.world) : el.objects.map((o) => o.center);
   if (!pts.length) return new Vector3(...app.scene.cursor);
+  if (pivot === 'ACTIVE_ELEMENT' && el.edit?.active) return el.edit.active.clone();
   if (pivot === 'ACTIVE_ELEMENT') {
     if (el.mesh) {
       const md = el.mesh;
@@ -200,6 +224,20 @@ export function axisVector(om: Matrix3, i: number): Vector3 {
 
 /** Apply a world-space transform matrix (built per element) to all elements from their start state. */
 export function applyTransform(el: TransformElems, build: (center: Vector3, factor: number) => Matrix4, pivot: PivotPoint, mode: TransformMode, value: number[]): void {
+  if (el.edit) {
+    const groupCenter = pivotCenter(el, pivot);
+    for (const e of el.edit.points) {
+      if (e.factor <= 0) { e.restore(); continue; }
+      let X: Matrix4;
+      if (mode === 'SHRINK_FATTEN' && e.normal) { const d = e.normal.clone().multiplyScalar(value[0] * e.factor); X = new Matrix4().makeTranslation(d.x, d.y, d.z); }
+      else if (mode === 'SHRINK_FATTEN' || mode === 'TOSPHERE') X = new Matrix4();
+      else X = build(pivot === 'INDIVIDUAL_ORIGINS' ? e.world : groupCenter, e.factor);
+      e.apply(X, mode, value);
+    }
+    if (el.editOb) el.edit.handler.afterTransform?.(el.editOb, false);
+    app.notify('geometry');
+    return;
+  }
   if (el.mesh) {
     const md = el.mesh;
     const groupCenter = pivotCenter(el, pivot);
@@ -263,6 +301,12 @@ function compatibleAngle(a: number, ref: number): number {
 }
 
 export function restoreElements(el: TransformElems): void {
+  if (el.edit) {
+    for (const p of el.edit.points) p.restore();
+    if (el.editOb) el.edit.handler.afterTransform?.(el.editOb, true);
+    app.notify('geometry');
+    return;
+  }
   if (el.mesh) {
     for (const v of el.verts) el.mesh.verts[v.index] = [v.start.x, v.start.y, v.start.z];
     app.tagGeometry(el.mesh.id);
@@ -326,11 +370,12 @@ export interface TransformStart {
 export function startTransform(s: TransformStart): void {
   const view = s.view;
   const ts = app.scene.toolSettings;
-  const propOn = !!app.editMesh && ts.proportionalEdit !== 'DISABLED';
+  const propOn = (!!app.editMesh || !!activeEditType()) && ts.proportionalEdit !== 'DISABLED';
   let propSize = ts.proportionalSize;
   let el = gatherElements(propOn ? propSize : 0, ts.proportionalEdit === 'CONNECTED');
   if (!el.objects.length && !el.verts.some((v) => v.factor > 0 || el.mesh?.vsel[v.index])) {
-    if (!el.mesh || !el.mesh.vsel.some(Boolean)) { s.onDone?.(false); return; }
+    if (el.editOb && !el.mesh) { if (!el.edit?.points.some((e) => e.selected)) { s.onDone?.(false); return; } }
+    else if (!el.mesh || !el.mesh.vsel.some(Boolean)) { s.onDone?.(false); return; }
   }
   if (propOn) updatePropFactors(el, propSize, ts.proportionalFalloff);
   let mode: TransformMode = s.mode;
@@ -408,7 +453,7 @@ export function startTransform(s: TransformStart): void {
     return best;
   };
   const closestSource = (target: Vector3): Vector3 => {
-    const pts = el.mesh ? el.verts.filter((v) => el.mesh!.vsel[v.index]).map((v) => v.world) : el.objects.map((o) => o.center);
+    const pts = el.edit ? el.edit.points.filter((e) => e.selected).map((e) => e.world) : el.mesh ? el.verts.filter((v) => el.mesh!.vsel[v.index]).map((v) => v.world) : el.objects.map((o) => o.center);
     let best = center, bd = Infinity;
     for (const p of pts) { const dd = p.distanceTo(target); if (dd < bd) { bd = dd; best = p; } }
     return best;
@@ -630,8 +675,9 @@ export function startTransform(s: TransformStart): void {
       view.requestRender();
       return;
     }
+    if (el.edit && el.editOb) el.edit.handler.afterTransform?.(el.editOb, true);
     // auto keyframing
-    if (ts.useKeyframeInsertAuto && !el.mesh) {
+    if (ts.useKeyframeInsertAuto && !el.mesh && !el.editOb) {
       const path = mode === 'TRANSLATION' ? 'location' : mode === 'RESIZE' ? 'scale' : 'rotation_euler';
       for (const o of el.objects) for (let i = 0; i < 3; i++) insertKeyframe(o.ob, path, i, app.scene.frameCurrent, undefined, app.prefs.keyframeInterpolation);
     }
@@ -808,8 +854,9 @@ const commonProps = {
 function execTransform(mode: TransformMode, props: OpProps, view: View3D | null): 'FINISHED' {
   const prop = props.proportional as string;
   const size = props.proportional_size as number;
-  const el = gatherElements(app.editMesh && prop !== 'DISABLED' ? size : 0, prop === 'CONNECTED');
-  if (app.editMesh && prop !== 'DISABLED') updatePropFactors(el, size, props.proportional_edit_falloff as string);
+  const editing = !!app.editMesh || !!activeEditType();
+  const el = gatherElements(editing && prop !== 'DISABLED' ? size : 0, prop === 'CONNECTED');
+  if (editing && prop !== 'DISABLED') updatePropFactors(el, size, props.proportional_edit_falloff as string);
   const om = orientationMatrix((props.constraint_orientation as TransformOrientation) ?? 'GLOBAL', view, el);
   const pivot = (props._pivot as PivotPoint) ?? app.scene.toolSettings.pivotPoint;
   const v = props.value as number[] | number;
@@ -837,7 +884,7 @@ function invokeTransform(mode: TransformMode) {
 let viewFromCtx: (ctx: OpContext) => View3D | null = () => null;
 export function setViewResolver(fn: (ctx: OpContext) => View3D | null): void { viewFromCtx = fn; }
 
-const pollTransform = () => app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT' ? false : app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) : app.selectedObjects().length > 0;
+const pollTransform = () => app.mode === 'SCULPT' || app.mode === 'VERTEX_PAINT' ? false : app.mode === 'EDIT' ? !!app.editMesh?.vsel.some(Boolean) || editTypeHasSelection() : app.selectedObjects().length > 0;
 
 export const TRANSFORM_OPERATORS: OperatorDef[] = [
   { id: 'transform.translate', label: 'Move', description: 'Translate (move) selected items', undo: true, register: true, poll: pollTransform,

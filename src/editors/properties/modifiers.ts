@@ -53,7 +53,7 @@ const ADD_MENU: { title: string; items: [string, string, string][] }[] = [
 ];
 
 /** Deform-only modifiers can be shown on the edit-mode cage. */
-const DEFORM_TYPES = new Set(['CAST', 'DISPLACE', 'SIMPLE_DEFORM', 'SMOOTH', 'WAVE']);
+export const DEFORM_TYPES = new Set(['CAST', 'DISPLACE', 'SIMPLE_DEFORM', 'SMOOTH', 'WAVE']);
 
 function addMenu(ctx: PropsCtx): MenuItem[] {
   return [{
@@ -174,7 +174,8 @@ function modifierBox(l: Layout, ctx: PropsCtx, i: number): void {
 
 // ------------------------------------------------------------------ per type layouts (2.79)
 
-const DRAW: Record<string, (l: Layout, m: M) => void> = {
+/** Per-type layouts; other modules add theirs with `DRAW[type] = ...` (exported for that). */
+export const DRAW: Record<string, (l: Layout, m: () => Modifier | null) => void> = {
   SUBSURF: (l, m) => {
     l.row().prop(me(m, 'subdivisionType', 'Subdivision Type', [
       { id: 'CATMULL_CLARK', label: 'Catmull-Clark', description: 'Use Catmull-Clark subdivision' },

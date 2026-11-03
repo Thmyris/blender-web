@@ -6,6 +6,8 @@ import { app, type ModalHandler } from '../../app';
 import type { BObject, MeshData } from '../../core/types';
 import { edgeIndexMap, edgeKey, flushSelection, polyCenter, selectModeOf, hiddenEdges, deselectHidden, type SelectMode } from '../../core/mesh';
 import type { View3D } from './view3d';
+import { activeEditType } from './edittypes';
+import { hasEvalGeometry } from '../../core/geomtypes';
 
 // ------------------------------------------------------------------ helpers
 
@@ -145,6 +147,8 @@ export function pickEditElement(view: View3D, x: number, y: number, mode: Select
 }
 
 export function clickSelectEdit(view: View3D, x: number, y: number, extend: boolean): boolean {
+  const et = activeEditType();
+  if (et) { const hit = et.handler.clickSelect(view, et.ob, x, y, extend); app.notify('select'); return hit; }
   const md = app.editMesh;
   if (!md) return false;
   const mode = selectMode();
@@ -266,6 +270,8 @@ type Inside = (px: number, py: number) => boolean;
 
 /** Select everything inside a screen-space region. */
 export function regionSelect(view: View3D, inside: Inside, bounds: { x0: number; y0: number; x1: number; y1: number }, mode: 'SET' | 'ADD' | 'SUB'): void {
+  const et = activeEditType();
+  if (et) { et.handler.regionSelect(view, et.ob, inside, mode); app.notify('select'); return; }
   const md = app.editMesh, ob = app.editObj;
   if (md && ob) {
     const sm = selectMode();
@@ -307,7 +313,7 @@ export function regionSelect(view: View3D, inside: Inside, bounds: { x0: number;
     let hit = false;
     const c = view.view.project(app.matrices.location(o));
     if (!c.behind && inside(c.x, c.y)) hit = true;
-    if (!hit && o.type === 'MESH') {
+    if (!hit && hasEvalGeometry(o.type)) {
       const verts = view.renderer.worldVerts(o);
       const step = Math.max(1, Math.floor(verts.length / 5000));
       for (let i = 0; i < verts.length && !hit; i += step) {

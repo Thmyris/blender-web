@@ -1,6 +1,7 @@
 // Default keymap (Blender 2.79 bindings), key event dispatch and shortcut lookup.
 
-import { app, type OpProps } from './app';
+import { app, type OpProps, type Mode } from './app';
+import { convertMenu } from './ops/curveconvert';
 import { showMenu, type MenuItem, setShortcutResolver } from './ui/menu';
 import type { Area } from './screen/screen';
 import {
@@ -8,7 +9,8 @@ import {
   parentMenu, parentClearMenu, trackMenu, meshAddItems,
 } from './editors/view3d/menus';
 
-type Space = 'WINDOW' | 'VIEW_3D' | 'TIMELINE' | 'DOPESHEET_EDITOR' | 'GRAPH_EDITOR' | 'IMAGE_EDITOR' | 'OUTLINER' | 'PROPERTIES' | 'ANIM';
+type Space = 'WINDOW' | 'VIEW_3D' | 'TIMELINE' | 'DOPESHEET_EDITOR' | 'GRAPH_EDITOR' | 'IMAGE_EDITOR' | 'OUTLINER' | 'PROPERTIES' | 'ANIM'
+  | 'NODE_EDITOR' | 'NLA_EDITOR' | 'SEQUENCE_EDITOR' | 'CLIP_EDITOR';
 
 export interface KeyItem {
   code: string;
@@ -16,7 +18,9 @@ export interface KeyItem {
   shift?: boolean;
   alt?: boolean;
   space: Space;
-  mode?: 'OBJECT' | 'EDIT';
+  mode?: Mode;
+  /** Extra condition (e.g. the type of the object in edit mode); the item is skipped when false. */
+  poll?: () => boolean;
   op?: string;
   props?: OpProps;
   menu?: () => MenuItem[];
@@ -26,8 +30,8 @@ export interface KeyItem {
   label?: string;
 }
 
-const K = (code: string, space: Space, op: string, props?: OpProps, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}, mode?: 'OBJECT' | 'EDIT', extra: Partial<KeyItem> = {}): KeyItem => ({ code, space, op, props, mode, ...mods, ...extra });
-const M = (code: string, space: Space, title: string, menu: () => MenuItem[], mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}, mode?: 'OBJECT' | 'EDIT'): KeyItem => ({ code, space, menu, title, mode, ...mods });
+const K = (code: string, space: Space, op: string, props?: OpProps, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}, mode?: Mode, extra: Partial<KeyItem> = {}): KeyItem => ({ code, space, op, props, mode, ...mods, ...extra });
+const M = (code: string, space: Space, title: string, menu: () => MenuItem[], mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}, mode?: Mode): KeyItem => ({ code, space, menu, title, mode, ...mods });
 const C = { ctrl: true }, S = { shift: true }, A = { alt: true }, CS = { ctrl: true, shift: true }, CA = { ctrl: true, alt: true }, SA = { shift: true, alt: true };
 
 const selectModeMenu = (): MenuItem[] => [
@@ -176,7 +180,7 @@ export const KEYMAP: KeyItem[] = [
   M('KeyA', 'VIEW_3D', 'Apply', applyMenu, C, 'OBJECT'),
   M('KeyC', 'VIEW_3D', 'Set Origin', originMenu, { ctrl: true, shift: true, alt: true }, 'OBJECT'),
   M('KeyL', 'VIEW_3D', 'Make Links', makeLinksMenu, C, 'OBJECT'),
-  M('KeyC', 'VIEW_3D', 'Convert to', () => [{ label: 'Mesh from Curve/Meta/Surf/Text', op: 'object.convert', props: { target: 'MESH' } }], A, 'OBJECT'),
+  M('KeyC', 'VIEW_3D', 'Convert to', () => convertMenu(), A, 'OBJECT'),
   M('KeyW', 'VIEW_3D', 'Specials', objectSpecialsMenu, {}, 'OBJECT'),
   M('KeyG', 'VIEW_3D', 'Select Grouped', selectGroupedMenu, S, 'OBJECT'),
   M('KeyL', 'VIEW_3D', 'Select Linked', selectLinkedMenu, S, 'OBJECT'),
@@ -239,6 +243,14 @@ export const KEYMAP: KeyItem[] = [
   ]),
 ];
 
+/**
+ * Add key items from another module. Prepended items take precedence over the defaults (use `poll`
+ * to restrict them, e.g. to an object type in edit mode).
+ */
+export function registerKeymap(items: KeyItem[], prepend = true): void {
+  if (prepend) KEYMAP.unshift(...items); else KEYMAP.push(...items);
+}
+
 // ------------------------------------------------------------------ key naming
 
 const KEY_NAMES: Record<string, string> = {
@@ -260,7 +272,7 @@ function itemText(k: KeyItem): string {
 }
 
 setShortcutResolver((op, props) => {
-  const items = KEYMAP.filter((k) => k.op === op && (k.mode === undefined || k.mode === app.mode));
+  const items = KEYMAP.filter((k) => k.op === op && (k.mode === undefined || k.mode === app.mode) && (!k.poll || k.poll()));
   if (!items.length) return undefined;
   // an item matches when all of its props agree with the requested props (missing keys count as falsy/defaults)
   const want = props ?? {};
@@ -278,7 +290,8 @@ function defaultOf(v: unknown): unknown {
 export function shortcutList(): [string, [string, string][]][] {
   const groups = new Map<string, [string, string][]>();
   for (const k of KEYMAP) {
-    const title = k.space === 'WINDOW' ? 'Window' : k.space === 'VIEW_3D' ? `3D View${k.mode ? ` (${k.mode === 'EDIT' ? 'Edit Mode' : 'Object Mode'})` : ''}` : k.space.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    const modeName = (m: Mode) => m.split('_').map((w) => w[0] + w.slice(1).toLowerCase()).join(' ') + (m === 'EDIT' || m === 'OBJECT' || m === 'POSE' ? ' Mode' : '');
+    const title = k.space === 'WINDOW' ? 'Window' : k.space === 'VIEW_3D' ? `3D View${k.mode ? ` (${modeName(k.mode)})` : ''}` : k.space.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     const desc = k.label ?? (k.op ? app.operator(k.op)?.label ?? k.op : `${k.title} menu`);
     const extra = k.props && Object.keys(k.props).length ? ` (${Object.values(k.props).map((v) => (typeof v === 'string' ? v.toLowerCase().replace(/_/g, ' ') : String(v))).join(', ')})` : '';
     if (!groups.has(title)) groups.set(title, []);
@@ -311,6 +324,9 @@ export function dispatchKey(e: KeyboardEvent, area: Area | null): boolean {
       if (k.space !== space || k.code !== code) continue;
       if (!!k.ctrl !== (e.ctrlKey || e.metaKey) || !!k.shift !== e.shiftKey || !!k.alt !== e.altKey) continue;
       if (k.mode && k.mode !== app.mode) continue;
+      if (k.poll && !k.poll()) continue;
+      // the default edit-mode menus are mesh menus: skip them for other object types (they register their own)
+      if (k.menu && k.mode === 'EDIT' && !k.poll && app.editObj && app.editObj.type !== 'MESH') continue;
       if (k.menu) {
         const items = k.menu();
         showMenu(items, app.mouse, { title: k.title, atMouse: true, area });

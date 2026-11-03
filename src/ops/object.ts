@@ -14,16 +14,21 @@ import {
 } from '../core/mesh';
 import { newModifier, modifierDef, evaluateModifiers } from '../core/modifiers';
 import { joinMeshInto } from '../core/meshops';
+import { applyPrimitiveUVs } from '../core/uvtransfer';
+import { applyEvalLayers, joinMeshLayers, seamSet } from '../core/uvdata';
+import { primMonkey } from '../core/monkey';
 import { newParticleSystem } from '../core/particles';
 import { defaultTextData } from '../core/text3d';
 import { confirmPopup } from '../ui/popup';
-import { showMenu } from '../ui/menu';
+import { showMenu, type MenuItem } from '../ui/menu';
 import { h } from '../ui/dom';
 import { buildLayout } from '../ui/layout';
 import { promptString } from '../ui/popup';
 import { popupLayer } from '../ui/menu';
-import { activeLayer, hasSelected, isObjectMode, viewAlignedRotation, viewOf } from './common';
+import { activeLayer, hasSelected, isObjectMode, viewAlignedRotation, viewOf, PARENT_TYPES } from './common';
 import { startTransform } from '../editors/view3d/transform';
+import { editTypeFor, hasEditType } from '../editors/view3d/edittypes';
+import { materialSlots } from '../core/matslots';
 
 const deg = Math.PI / 180;
 const MODIFIER_ITEMS: [string, string][] = [
@@ -34,6 +39,7 @@ const MODIFIER_ITEMS: [string, string][] = [
 const CONSTRAINT_ITEMS: [string, string][] = [
   ['COPY_LOCATION', 'Copy Location'], ['COPY_ROTATION', 'Copy Rotation'], ['COPY_SCALE', 'Copy Scale'], ['LIMIT_LOCATION', 'Limit Location'],
   ['LIMIT_ROTATION', 'Limit Rotation'], ['LIMIT_SCALE', 'Limit Scale'], ['TRACK_TO', 'Track To'], ['DAMPED_TRACK', 'Damped Track'], ['CHILD_OF', 'Child Of'],
+  ['FOLLOW_PATH', 'Follow Path'], ['CLAMP_TO', 'Clamp To'],
 ];
 
 // ------------------------------------------------------------------ add primitives
@@ -82,6 +88,7 @@ function addPrimitive(name: string, geom: PrimitiveGeometry, props: OpProps): 'F
     const total = inv.multiply(m);
     selectAllMesh(md, false);
     const base = md.verts.length;
+    const faceBase = md.faces.length;
     for (const v of geom.verts) {
       const p = new Vector3(...v).applyMatrix4(total);
       addVert(md, [p.x, p.y, p.z], true);
@@ -91,10 +98,12 @@ function addPrimitive(name: string, geom: PrimitiveGeometry, props: OpProps): 'F
     rebuildEdges(md);
     ensureArrays(md);
     flushSelection(md, 'VERT');
+    applyPrimitiveUVs(md, name, geom, faceBase);
     app.tagGeometry(md.id);
     return 'FINISHED';
   }
   const mesh = createMesh(doc, name, geom.verts, geom.faces, geom.edges ?? []);
+  applyPrimitiveUVs(mesh, name, geom, 0);
   selectAllMesh(mesh, true); // Blender creates primitives fully selected
   const ob = createObject(doc, 'MESH', name, mesh.id);
   addObjectCommon(ob, props);
@@ -105,7 +114,7 @@ function addPrimitive(name: string, geom: PrimitiveGeometry, props: OpProps): 'F
 
 const fillItems: [string, string][] = [['NOTHING', 'Nothing'], ['NGON', 'Ngon'], ['TRIFAN', 'Triangle Fan']];
 
-function primOp(id: string, label: string, name: string, icon: string, props: OperatorDef['props'], build: (p: OpProps) => PrimitiveGeometry): OperatorDef {
+export function primOp(id: string, label: string, name: string, icon: string, props: OperatorDef['props'], build: (p: OpProps) => PrimitiveGeometry): OperatorDef {
   return {
     id, label, icon, undo: true, register: true, description: `Construct a ${name.toLowerCase()} mesh`,
     props: { ...props, ...commonAddProps },
@@ -157,10 +166,7 @@ export const ADD_OPERATORS: OperatorDef[] = [
     y_subdivisions: { name: 'Y Subdivisions', type: 'int', default: 10, min: 2, max: 10000 },
     radius: { name: 'Radius', type: 'float', default: 1, min: 0, subtype: 'DISTANCE' },
   }, (p) => primGrid(n(p, 'x_subdivisions'), n(p, 'y_subdivisions'), n(p, 'radius'))),
-  {
-    id: 'mesh.primitive_monkey_add', label: 'Add Monkey', icon: 'MESH_MONKEY', description: 'Construct a Suzanne mesh (not available in blender-web)',
-    poll: () => false, exec: () => 'CANCELLED',
-  },
+  { ...primOp('mesh.primitive_monkey_add', 'Add Monkey', 'Suzanne', 'MESH_MONKEY', { radius: { name: 'Radius', type: 'float', default: 1, min: 0, subtype: 'DISTANCE' } }, (p) => primMonkey(n(p, 'radius'))), description: 'Construct a Suzanne mesh' },
   {
     id: 'object.camera_add', label: 'Add Camera', icon: 'OUTLINER_OB_CAMERA', undo: true, register: true, description: 'Add a camera object to the scene',
     poll: isObjectMode, props: { ...commonAddProps }, invoke: (ctx, p) => {
@@ -542,7 +548,9 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
           return i;
         });
         if (!remap.length) remap.push(0);
+        const nf0 = tgt.faces.length, nv0 = tgt.verts.length;
         joinMeshInto(tgt, src, m.toArray(), remap);
+        joinMeshLayers(tgt, src, nf0, nv0, m.toArray());
       }
       removeObjects(others);
       act.select = true;
@@ -554,20 +562,26 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   {
     id: 'object.parent_set', label: 'Make Parent', description: 'Set the object\'s parenting', undo: true, register: true,
     poll: () => isObjectMode() && !!app.activeObject && app.selectedObjects().length > 1,
-    props: { type: { name: 'Type', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object']] }, keep_transform: { name: 'Keep Transform', type: 'bool', default: false } },
+    props: { type: { name: 'Type', type: 'enum', default: 'OBJECT', items: [['OBJECT', 'Object'], ['ARMATURE', 'Armature Deform'], ['ARMATURE_NAME', '   With Empty Groups'], ['ARMATURE_ENVELOPE', '   With Envelope Weights'], ['ARMATURE_AUTO', '   With Automatic Weights'], ['BONE', 'Bone'], ['LATTICE', 'Lattice Deform']] }, keep_transform: { name: 'Keep Transform', type: 'bool', default: false } },
     invoke: (ctx, p) => {
       showMenu([
         { label: 'Object', action: () => void app.callOperator('object.parent_set', { type: 'OBJECT', keep_transform: false }, { area: ctx.area, exec: true }) },
         { label: 'Object (Keep Transform)', action: () => void app.callOperator('object.parent_set', { type: 'OBJECT', keep_transform: true }, { area: ctx.area, exec: true }) },
         { label: 'Object (Without Inverse)', action: () => void app.callOperator('object.parent_no_inverse_set', {}, { area: ctx.area, exec: true }) },
+        ...PARENT_TYPES.filter((t) => t.poll()).map((t): MenuItem => (t.sub
+          ? { type: 'submenu', label: t.label, items: t.sub.map((x) => ({ label: x.label, action: () => void app.callOperator('object.parent_set', { type: t.id, ...x.props }, { area: ctx.area, exec: true }) })) }
+          : { label: t.label, action: () => void app.callOperator('object.parent_set', { type: t.id }, { area: ctx.area, exec: true }) })),
       ], app.mouse, { title: 'Set Parent To', atMouse: true });
       void p;
       return 'CANCELLED';
     },
-    exec: () => {
+    exec: (_c, p) => {
+      const ext = PARENT_TYPES.find((t) => t.id === p.type);
+      if (ext) return ext.exec(p);
       const par = app.activeObject!;
       for (const o of app.selectedObjects()) {
         if (o === par) continue;
+        delete o.parentBone;
         setParentKeepTransform(app.doc, o, par, app.matrices);
         app.matrices.clear();
       }
@@ -785,6 +799,20 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
       const act = app.activeObject!;
       let mode = p.mode as 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT';
       if (p.toggle && app.mode === mode) mode = 'OBJECT';
+      // leaving / entering modes registered by other modules (armature & lattice edit, pose, weight paint, ...)
+      const prevOb = app.editObject ? app.doc.objects[app.editObject] : null;
+      const prevHandler = prevOb && app.mode !== 'OBJECT' ? editTypeFor(prevOb.type, app.mode) : null;
+      const nextHandler = (mode as string) !== 'OBJECT' ? editTypeFor(act.type, mode) : null;
+      if (prevHandler && (prevOb !== act || app.mode !== mode)) prevHandler.exit?.(prevOb!);
+      if (nextHandler) {
+        if (act.hide) return 'CANCELLED';
+        app.mode = mode;
+        app.editObject = act.id;
+        act.select = true;
+        nextHandler.enter?.(act);
+        app.tagAllGeometry();
+        return 'FINISHED';
+      }
       if (mode === 'SCULPT' || mode === 'VERTEX_PAINT') {
         if (act.type !== 'MESH' || act.hide) { app.report('WARNING', 'This mode needs a visible mesh object'); return 'CANCELLED'; }
         app.mode = mode;
@@ -818,7 +846,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   },
   {
     id: 'object.editmode_toggle', label: 'Toggle Editmode', description: 'Toggle object\'s editmode', undo: true, register: true,
-    poll: () => !!app.activeObject && (app.activeObject.type === 'MESH' || app.activeObject.type === 'FONT' || app.mode === 'EDIT'),
+    poll: () => !!app.activeObject && (app.activeObject.type === 'MESH' || app.activeObject.type === 'FONT' || app.mode === 'EDIT' || hasEditType(app.activeObject.type)),
     // like Blender, Tab from sculpt mode goes to edit mode; from edit mode back to object mode
     exec: (ctx) => app.operator('object.mode_set')!.exec!(ctx, { mode: app.mode === 'EDIT' ? 'OBJECT' : 'EDIT', toggle: false }) as 'FINISHED',
   },
@@ -856,9 +884,11 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
       for (const o of selectedMeshes()) {
         const md = app.meshOf(o)!;
         const ev = evaluateModifiers(md, o.modifiers, { frame: app.scene.frameCurrent, render: false, editMode: false });
+        const seamKeep = seamSet(md);
         md.verts = ev.verts; md.faces = ev.faces; md.edges = ev.looseEdges.slice(); md.faceSmooth = ev.faceSmooth; md.faceMat = ev.faceMat;
         md.vsel = []; md.esel = []; md.fsel = []; md.activeFace = -1;
         rebuildEdges(md); ensureArrays(md);
+        applyEvalLayers(md, ev, seamKeep);
         o.modifiers = [];
         app.tagGeometry(md.id);
       }
@@ -917,7 +947,7 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   // ---- modifiers
   {
     id: 'object.modifier_add', label: 'Add Modifier', description: 'Add a procedural operation/effect to the active object', undo: true, register: true,
-    poll: () => app.activeObject?.type === 'MESH',
+    poll: () => !!app.activeObject && ['MESH', 'CURVE', 'SURFACE', 'FONT'].includes(app.activeObject.type),
     props: { type: { name: 'Type', type: 'enum', default: 'SUBSURF', items: MODIFIER_ITEMS } },
     exec: (_c, p) => {
       const o = app.activeObject!;
@@ -975,9 +1005,11 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
       if (meshUsers(md.id).length > 1) { app.report('ERROR', 'Modifiers cannot be applied to multi-user data'); return 'CANCELLED'; }
       const mod = o.modifiers[i];
       const ev = evaluateModifiers(md, [{ ...mod, showViewport: true }], { frame: app.scene.frameCurrent, render: false, editMode: false });
+      const seamKeep = seamSet(md);
       md.verts = ev.verts; md.faces = ev.faces; md.edges = ev.looseEdges.slice(); md.faceSmooth = ev.faceSmooth; md.faceMat = ev.faceMat;
       md.vsel = []; md.esel = []; md.fsel = []; md.activeFace = -1;
       rebuildEdges(md); ensureArrays(md);
+      applyEvalLayers(md, ev, seamKeep);
       o.modifiers.splice(i, 1);
       app.tagGeometry(md.id);
       return 'FINISHED';
@@ -1054,20 +1086,21 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
   })),
   // ---- materials
   {
-    id: 'object.material_slot_add', label: 'Add Material Slot', description: 'Add a new material slot', undo: true, register: true, poll: () => app.activeObject?.type === 'MESH',
-    exec: () => { const md = app.meshOf(app.activeObject)!; md.materials.push(null); app.activeObject!.activeMaterialIndex = md.materials.length - 1; return 'FINISHED'; },
+    id: 'object.material_slot_add', label: 'Add Material Slot', description: 'Add a new material slot', undo: true, register: true, poll: () => !!materialSlots(app.doc, app.activeObject),
+    exec: () => { const mats = materialSlots(app.doc, app.activeObject)!; mats.push(null); app.activeObject!.activeMaterialIndex = mats.length - 1; app.tagAllGeometry(); return 'FINISHED'; },
   },
   {
     id: 'object.material_slot_remove', label: 'Remove Material Slot', description: 'Remove the selected material slot', undo: true, register: true,
-    poll: () => !!app.meshOf(app.activeObject)?.materials.length,
+    poll: () => !!materialSlots(app.doc, app.activeObject)?.length,
     exec: () => {
       const o = app.activeObject!;
-      const md = app.meshOf(o)!;
-      const i = Math.min(o.activeMaterialIndex, md.materials.length - 1);
-      md.materials.splice(i, 1);
-      md.faceMat = md.faceMat.map((m) => (m > i ? m - 1 : m === i ? Math.max(0, i - 1) : m));
+      const md = app.meshOf(o);
+      const mats = materialSlots(app.doc, o)!;
+      const i = Math.min(o.activeMaterialIndex, mats.length - 1);
+      mats.splice(i, 1);
+      if (md) md.faceMat = md.faceMat.map((m) => (m > i ? m - 1 : m === i ? Math.max(0, i - 1) : m));
       o.activeMaterialIndex = Math.max(0, i - 1);
-      app.tagGeometry(md.id);
+      if (md) app.tagGeometry(md.id); else app.tagAllGeometry();
       return 'FINISHED';
     },
   },
@@ -1087,16 +1120,16 @@ export const OBJECT_OPERATORS: OperatorDef[] = [
     },
   })),
   {
-    id: 'material.new', label: 'New Material', description: 'Add a new material', undo: true, register: true, poll: () => app.activeObject?.type === 'MESH',
+    id: 'material.new', label: 'New Material', description: 'Add a new material', undo: true, register: true, poll: () => !!materialSlots(app.doc, app.activeObject),
     exec: () => {
       const o = app.activeObject!;
-      const md = app.meshOf(o)!;
-      const cur = md.materials[o.activeMaterialIndex];
+      const mats = materialSlots(app.doc, o)!;
+      const cur = mats[o.activeMaterialIndex];
       const m = createMaterial(app.doc, cur ? app.doc.materials[cur]?.name ?? 'Material' : 'Material');
       if (cur && app.doc.materials[cur]) Object.assign(m, JSON.parse(JSON.stringify({ ...app.doc.materials[cur], id: m.id, name: m.name })));
-      if (!md.materials.length) { md.materials.push(m.id); o.activeMaterialIndex = 0; }
-      else md.materials[o.activeMaterialIndex] = m.id;
-      app.tagGeometry(md.id);
+      if (!mats.length) { mats.push(m.id); o.activeMaterialIndex = 0; }
+      else mats[o.activeMaterialIndex] = m.id;
+      app.tagAllGeometry();
       return 'FINISHED';
     },
   },
@@ -1106,6 +1139,7 @@ export function newConstraint(type: ConstraintType, ob: BObject, target: string 
   const labels: Record<ConstraintType, string> = {
     COPY_LOCATION: 'Copy Location', COPY_ROTATION: 'Copy Rotation', COPY_SCALE: 'Copy Scale', LIMIT_LOCATION: 'Limit Location',
     LIMIT_ROTATION: 'Limit Rotation', LIMIT_SCALE: 'Limit Scale', TRACK_TO: 'Track To', DAMPED_TRACK: 'Damped Track', CHILD_OF: 'Child Of',
+    FOLLOW_PATH: 'Follow Path', CLAMP_TO: 'Clamp To',
   };
   const names = new Set(ob.constraints.map((c) => c.name));
   let name = labels[type];
@@ -1126,6 +1160,10 @@ export function newConstraint(type: ConstraintType, ob: BObject, target: string 
       const inv = target && app.doc.objects[target] ? app.matrices.world(app.doc.objects[target]).clone().invert().toArray() : new Matrix4().toArray();
       return { ...base, inverse: inv };
     }
+    case 'FOLLOW_PATH':
+      return { ...base, offset: 0, offsetFactor: 0, useFixedLocation: false, useCurveFollow: false, useCurveRadius: false, forwardAxis: 'FORWARD_Y', upAxis: 'UP_Z' };
+    case 'CLAMP_TO':
+      return { ...base, mainAxis: 'CLAMPTO_AUTO', useCyclic: false };
   }
 }
 

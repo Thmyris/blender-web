@@ -1,0 +1,110 @@
+/* Node editor, NLA editor, video sequencer and movie clip editor (Blender 2.79 default theme). */
+
+/* ---------------------------------------------------------------- node editor */
+
+.node-region {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: #393939;
+  cursor: default;
+}
+.node-region > canvas.node-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.node-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.node-world svg.node-links { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.node-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.node-tree-msg { position: absolute; left: 0; right: 0; top: 45%; text-align: center; color: #aaa; pointer-events: none; }
+
+.bnode {
+  position: absolute;
+  background: rgba(153, 153, 153, 0.94);
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  color: #000;
+  font-size: var(--ui-size);
+  outline: 1px solid rgba(0, 0, 0, 0.55);
+}
+.bnode.selected { outline: 2px solid #ed5700; }
+.bnode.active { outline: 2px solid #ffffff; }
+.bnode.muted { opacity: 0.75; }
+.bnode.muted .bnode-header { filter: saturate(0.25) brightness(0.8); }
+.bnode-header {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 2px;
+  border-radius: 5px 5px 0 0;
+  color: #000;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bnode.selected .bnode-header, .bnode.active .bnode-header { color: #fff; }
+.bnode-header .tri { width: 14px; height: 14px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.bnode-header .tri::before { content: ''; border: 4px solid transparent; border-top: 5px solid currentColor; margin-top: 4px; }
+.bnode.collapsed .bnode-header .tri::before { border: 4px solid transparent; border-left: 5px solid currentColor; margin: 0 0 0 4px; }
+.bnode-header .ntitle { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.bnode.collapsed { border-radius: 10px; }
+.bnode.collapsed .bnode-header { border-radius: 10px; }
+.bnode-body { padding: 3px 6px 5px 6px; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.bnode-body .layout-col, .bnode-body .layout-row { min-width: 0; }
+.bnode-sock-row { position: relative; min-height: 20px; display: flex; align-items: center; }
+.bnode-sock-row.out { justify-content: flex-end; }
+.bnode-sock-row > .sname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bnode-sock-row > .layout-row, .bnode-sock-row > .layout-col, .bnode-sock-row > .w { flex: 1 1 auto; }
+.sock {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid #000;
+  box-sizing: border-box;
+  cursor: crosshair;
+  z-index: 2;
+}
+.sock::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; }
+.bnode-sock-row.in > .sock { left: -11.5px; top: 4.5px; }
+.bnode-sock-row.out > .sock { right: -11.5px; top: 4.5px; }
+.sock.vector { border-radius: 2px; transform: rotate(45deg) scale(0.85); }
+.bnode.collapsed .sock { top: 4.5px; }
+.bnode-reroute {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: #c7c729;
+  border: 1px solid #000;
+  cursor: crosshair;
+}
+.bnode-reroute.selected { box-shadow: 0 0 0 2px #ed5700; }
+.bnode-reroute.active { box-shadow: 0 0 0 2px #fff; }
+.bframe {
+  position: absolute;
+  background: rgba(155, 155, 155, 0.5);
+  border-radius: 6px;
+  color: #000;
+  outline: 1px solid rgba(0, 0, 0, 0.3);
+}
+.bframe.selected { outline: 2px solid #ed5700; }
+.bframe.active { outline: 2px solid #fff; }
+.bframe .flabel { text-align: center; padding: 4px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bnode .w-menu, .bnode .w-num, .bnode .w-text, .bnode .w-button { min-width: 0; }
+.bnode .label { color: #000; }
+.bnode-preview { width: 100%; background: #222; display: block; margin-top: 2px; }
+
+.node-sidebar { flex: 0 0 250px; position: relative; display: flex; border-left: 1px solid #222; background: #727272; }
+.node-toolbar { flex: 0 0 150px; position: relative; display: flex; border-right: 1px solid #222; background: #727272; }
+
+/* ---------------------------------------------------------------- strip editors (NLA, sequencer, clip) */
+
+.strip-region { position: relative; flex: 1 1 auto; overflow: hidden; }
+.strip-region > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.strip-channels { flex: 0 0 200px; position: relative; overflow: hidden; background: #727272; border-right: 1px solid #3a3a3a; }
+.strip-channels canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.side-region { flex: 0 0 260px; position: relative; display: flex; border-left: 1px solid #222; background: #727272; }
+.side-region.left { border-left: none; border-right: 1px solid #222; flex-basis: 200px; }
+.split-preview { flex: 0 0 45%; position: relative; border-bottom: 2px solid #161616; }
+.editor-col { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.editor-row { display: flex; flex-direction: row; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.clip-pattern-preview { width: 100%; height: 120px; background: #000; display: block; image-rendering: pixelated; }

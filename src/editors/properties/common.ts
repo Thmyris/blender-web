@@ -5,6 +5,7 @@
 
 import { app } from '../../app';
 import { dataUsers } from '../../core/scene';
+import { materialSlots } from '../../core/matslots';
 import type { Area } from '../../screen/screen';
 import type {
   BObject, CameraData, DataCollection, LampData, MaterialData, MeshData, Scene, TextureData, TextureSlot, WorldData,
@@ -31,6 +32,13 @@ export const scene = (): Scene => app.scene;
 export const rd = () => app.scene.render;
 export const ob = (): BObject | null => app.activeObject;
 export const meshData = (): MeshData | null => app.meshOf(app.activeObject);
+/** Data with material slots of the active object (mesh, curve, surface, metaball or text). */
+export const slotData = (): { materials: (string | null)[] } | null => {
+  const md = meshData();
+  if (md) return md;
+  const s = materialSlots(app.doc, app.activeObject);
+  return s ? { materials: s } : null;
+};
 
 export function cameraData(): CameraData | null {
   const o = app.activeObject;
@@ -50,13 +58,13 @@ export function worldData(): WorldData | null {
 /** Index of the active material slot, clamped to the slot count (-1 when there are none). */
 export function activeSlotIndex(): number {
   const o = ob();
-  const md = meshData();
+  const md = slotData();
   if (!o || !md || !md.materials.length) return -1;
   return Math.max(0, Math.min(o.activeMaterialIndex, md.materials.length - 1));
 }
 
 export function activeMaterial(): MaterialData | null {
-  const md = meshData();
+  const md = slotData();
   const i = activeSlotIndex();
   if (!md || i < 0) return null;
   const id = md.materials[i];

@@ -8,8 +8,10 @@ import {
   activeWhen, customPropsBody, flatPanel, meshData, NA, naBool, naButton, naFloat, naString, ob, richList, type PropsCtx,
 } from './common';
 import { objectDataTemplate } from './data_template';
+import { vertexGroupsPanel, armaturePanels, latticePanels } from './rig_panels';
 import { cameraPanels } from './data_camera';
 import { lampPanels } from './data_lamp';
+import { uvMapsPanel } from './data_uv';
 
 function emptyList(l: Layout, rows: number, side: { icon: string; tip: string }[]): void {
   richList(l, { rows, items: () => [], active: () => -1, side: side.map((s) => ({ ...s, tip: `${s.tip} (not available in blender-web)`, disabled: () => true })) });
@@ -17,7 +19,7 @@ function emptyList(l: Layout, rows: number, side: { icon: string; tip: string }[
 
 const geomChanged = () => app.tagGeometry(meshData()?.id);
 
-function meshPanels(): PanelDef[] {
+function meshPanels(ctx: PropsCtx): PanelDef[] {
   const P: PanelDef[] = [];
   P.push({ id: 'data.mesh_context', label: '', noHeader: true, draw: (l) => { flatPanel(l); objectDataTemplate(l, 'meshes', 'MESH_DATA', 'Mesh'); } });
 
@@ -50,14 +52,14 @@ function meshPanels(): PanelDef[] {
     },
   });
 
-  P.push({ id: 'data.vertex_groups', label: 'Vertex Groups', draw: (l) => emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add a new vertex group' }, { icon: 'ZOOMOUT', tip: 'Delete the active vertex group' }, { icon: 'DOWNARROW_HLT', tip: 'Vertex Group Specials' }]) });
+  P.push(vertexGroupsPanel(ctx));
   P.push({
     id: 'data.shape_keys', label: 'Shape Keys',
     draw: (l) => {
       emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add shape key to the object' }, { icon: 'ZOOMOUT', tip: 'Remove shape key from the object' }, { icon: 'DOWNARROW_HLT', tip: 'Shape Key Specials' }]);
     },
   });
-  P.push({ id: 'data.uv_maps', label: 'UV Maps', draw: (l) => emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add UV Map' }, { icon: 'ZOOMOUT', tip: 'Remove UV Map' }]) });
+  P.push({ id: 'data.uv_maps', label: 'UV Maps', draw: (l) => uvMapsPanel(l) });
   P.push({ id: 'data.vertex_colors', label: 'Vertex Colors', draw: (l) => emptyList(l, 2, [{ icon: 'ZOOMIN', tip: 'Add vertex color layer' }, { icon: 'ZOOMOUT', tip: 'Remove vertex color layer' }]) });
 
   P.push({
@@ -94,11 +96,13 @@ function emptyPanels(): PanelDef[] {
 
 export function dataPanels(ctx: PropsCtx): PanelDef[] {
   switch (ob()?.type) {
-    case 'MESH': return meshPanels();
+    case 'MESH': return meshPanels(ctx);
     case 'CAMERA': return cameraPanels(ctx);
     case 'LAMP': return lampPanels(ctx);
     case 'EMPTY': return emptyPanels();
     case 'FONT': return textPanels();
+    case 'ARMATURE': return armaturePanels(ctx);
+    case 'LATTICE': return latticePanels(ctx);
     default: return [];
   }
 }

@@ -5,10 +5,13 @@ import type { BObject, Doc, MeshData, Scene, Vec3 } from './core/types';
 import { activeScene, createStartupDoc, isObjectSelectable, isObjectVisible, MatrixCache, sceneObjects, BLENDER_VERSION } from './core/scene';
 import { evaluateModifiers, type EvalMesh } from './core/modifiers';
 import { evaluateObjectAnimation } from './core/anim';
+import { evaluateNla, syncActions } from './core/nla';
 import { ensureArrays, rebuildEdges } from './core/mesh';
 import { textEvalMesh } from './core/text3d';
+import { curveObjEvalMesh } from './core/curveobj';
+import { CURVE_LIKE_TYPES, hasEvalGeometry } from './core/geomtypes';
 
-export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT';
+export type Mode = 'OBJECT' | 'EDIT' | 'SCULPT' | 'VERTEX_PAINT' | 'WEIGHT_PAINT' | 'POSE';
 
 // ------------------------------------------------------------------ preferences
 
@@ -145,6 +148,25 @@ interface LastOp {
   /** Index into the undo stack of the state from before the operator ran. */
   undoIndex: number;
 }
+
+/**
+ * Hooks run around every operator call (including redo-panel re-execution). `before` returns a token
+ * that is handed to `after`. Used e.g. to keep per-vertex mesh layers consistent through topology edits.
+ */
+export interface OperatorHook {
+  before?(def: OperatorDef, ctx: OpContext): unknown;
+  after?(def: OperatorDef, ctx: OpContext, token: unknown, result: OpResult): void;
+}
+export const operatorHooks: OperatorHook[] = [];
+
+/** Called for every document that is loaded (files, auto save, startup file), to default new fields of older documents. */
+export const docLoadHooks: ((doc: Doc) => void)[] = [];
+
+/**
+ * Extra cache-key parts for evaluated meshes: modifiers that depend on other objects (Armature, Lattice,
+ * Hook, ...) return a string that changes whenever their result would change.
+ */
+export const evalKeyHooks: ((ob: BObject, render: boolean) => string)[] = [];
 
 // ------------------------------------------------------------------ app
 
@@ -289,16 +311,19 @@ export class App {
 
   /** Mesh with modifiers applied (cached). */
   evalMesh(ob: BObject, render = false): EvalMesh | null {
-    if (ob.type === 'FONT') return textEvalMesh(ob);
+    if (ob.type === 'FONT') return textEvalMesh(ob, this.doc, { render, frame: this.scene.frameCurrent });
+    if (CURVE_LIKE_TYPES.has(ob.type)) {
+      return curveObjEvalMesh(ob, { doc: this.doc, render, frame: this.scene.frameCurrent, editMode: this.mode === 'EDIT' && this.editObject === ob.id, world: (o) => this.matrices.world(o), transforming: !!this.modal });
+    }
     const md = this.meshOf(ob);
     if (!md) return null;
     const editMode = this.mode === 'EDIT' && this.editObject === ob.id;
     const timeDependent = ob.modifiers.some((m) => m.type === 'WAVE' || m.type === 'BUILD');
-    const key = [md.id, this.dataVersion.get(md.id) ?? 0, md.verts.length, md.faces.length, JSON.stringify(ob.modifiers), render, editMode, timeDependent ? this.scene.frameCurrent : 0].join('|');
+    const key = [md.id, this.dataVersion.get(md.id) ?? 0, md.verts.length, md.faces.length, JSON.stringify(ob.modifiers), render, editMode, timeDependent ? this.scene.frameCurrent : 0, ...evalKeyHooks.map((f) => f(ob, render))].join('|');
     const cacheKey = `${ob.id}|${render}`;
     const hit = this.evalCache.get(cacheKey);
     if (hit && hit.key === key) return hit.mesh;
-    const mesh = evaluateModifiers(md, ob.modifiers, { frame: this.scene.frameCurrent, render, editMode });
+    const mesh = evaluateModifiers(md, ob.modifiers, { frame: this.scene.frameCurrent, render, editMode, ob, doc: this.doc });
     this.evalCache.set(cacheKey, { key, mesh });
     return mesh;
   }
@@ -374,6 +399,7 @@ export class App {
     this.doc.filename = filename || doc.filename || '';
     this.mode = 'OBJECT';
     this.editObject = null;
+    for (const fn of docLoadHooks) fn(this.doc);
     // make sure topology arrays are consistent for older files
     for (const m of Object.values(this.doc.meshes)) { rebuildEdges(m); ensureArrays(m); }
     this.matrices = new MatrixCache(this.doc);
@@ -393,7 +419,11 @@ export class App {
 
   evaluateAnimation(): void {
     const f = this.scene.frameCurrent;
-    for (const ob of Object.values(this.doc.objects)) if (ob.fcurves.length) evaluateObjectAnimation(ob, f);
+    syncActions(this.doc);
+    for (const ob of Object.values(this.doc.objects)) {
+      if (ob.animData && evaluateNla(this.doc, ob, f)) continue;
+      if (ob.fcurves.length) evaluateObjectAnimation(ob, f);
+    }
   }
 
   setFrame(frame: number): void {
@@ -491,15 +521,18 @@ export class App {
     }
     const full = this.defaultProps(def, props);
     const undoIndex = this.undoIndex;
-    let res: OpResult;
+    let res: OpResult = 'CANCELLED';
+    const fn = !opts.exec && def.invoke ? def.invoke : def.exec;
+    if (!fn) return 'CANCELLED';
+    const tokens = operatorHooks.map((h) => h.before?.(def, ctx));
     try {
-      const fn = !opts.exec && def.invoke ? def.invoke : def.exec;
-      if (!fn) return 'CANCELLED';
       res = await fn(ctx, full);
     } catch (err) {
       console.error(err);
       this.report('ERROR', `${def.label}: ${(err as Error).message}`);
       return 'CANCELLED';
+    } finally {
+      operatorHooks.forEach((h, i) => { try { h.after?.(def, ctx, tokens[i], res ?? 'CANCELLED'); } catch (e) { console.error(e); } });
     }
     if (res === 'FINISHED') this.finishOperator(def, full, ctx, undoIndex);
     return res;
@@ -530,8 +563,12 @@ export class App {
     this.matrices = new MatrixCache(this.doc);
     this.evalCache.clear();
     this.tagAllGeometry();
+    const tokens = operatorHooks.map((h) => h.before?.(last.def, last.ctx));
     try {
-      const res = await last.def.exec(last.ctx, props);
+      let res: OpResult = 'CANCELLED';
+      try { res = await last.def.exec(last.ctx, props); } finally {
+        operatorHooks.forEach((h, i) => { try { h.after?.(last.def, last.ctx, tokens[i], res); } catch (e) { console.error(e); } });
+      }
       if (res === 'FINISHED') {
         this.pushUndo(last.def.label);
         this.lastOp = { ...last, props: JSON.parse(JSON.stringify(props)) };
@@ -614,7 +651,7 @@ export class App {
       let v = 0, f = 0, t = 0;
       const vis = this.visibleObjects();
       for (const o of vis) {
-        const m = o.type === 'MESH' || o.type === 'FONT' ? this.evalMesh(o) : null;
+        const m = hasEvalGeometry(o.type) ? this.evalMesh(o) : null;
         if (!m) continue;
         v += m.verts.length; f += m.faces.length;
         for (const p of m.faces) t += Math.max(0, p.length - 2);

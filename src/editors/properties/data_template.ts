@@ -7,9 +7,9 @@ import type { DataCollection } from '../../core/types';
 import type { Layout } from '../../ui/layout';
 import { cloneJSON, ob, usersOf } from './common';
 
-type ObDataColl = 'meshes' | 'cameras' | 'lamps';
+type ObDataColl = 'meshes' | 'cameras' | 'lamps' | 'armatures' | 'lattices';
 
-const PREFIX: Record<ObDataColl, string> = { meshes: 'ME', cameras: 'CA', lamps: 'LA' };
+const PREFIX: Record<ObDataColl, string> = { meshes: 'ME', cameras: 'CA', lamps: 'LA', armatures: 'AR', lattices: 'LT' };
 
 /** `template_ID(ob, "data")`: browse / rename / users / fake user / new (copy of current). */
 export function objectDataTemplate(l: Layout, coll: ObDataColl, ic: string, title: string): void {

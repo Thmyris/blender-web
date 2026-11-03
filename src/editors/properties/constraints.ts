@@ -6,12 +6,14 @@ import { app } from '../../app';
 import type { Constraint, ConstraintType } from '../../core/types';
 import { bprop, eprop, fprop, sprop, type BoolProp, type FloatProp, type Layout, type PanelDef } from '../../ui/layout';
 import type { MenuItem } from '../../ui/menu';
+import type { PathAnimCurve } from '../../core/curvedeform';
 import {
   activeWhen, callOp, commitEdit, flatPanel, NA, naBool, naButton, naEnum, ob, objectItems, type PropsCtx,
 } from './common';
 
 const SUPPORTED = new Set<ConstraintType>([
   'COPY_LOCATION', 'COPY_ROTATION', 'COPY_SCALE', 'LIMIT_LOCATION', 'LIMIT_ROTATION', 'LIMIT_SCALE', 'TRACK_TO', 'DAMPED_TRACK', 'CHILD_OF',
+  'FOLLOW_PATH', 'CLAMP_TO',
 ]);
 
 /** Blender 2.79's "Add Object Constraint" menu (object constraints only, no IK). */
@@ -22,7 +24,7 @@ const ADD_MENU: { title: string; items: [string, string][] }[] = [
   { title: 'Relationship', items: [['ACTION', 'Action'], ['CHILD_OF', 'Child Of'], ['FLOOR', 'Floor'], ['FOLLOW_PATH', 'Follow Path'], ['PIVOT', 'Pivot'], ['RIGID_BODY_JOINT', 'Rigid Body Joint'], ['SHRINKWRAP', 'Shrinkwrap']] },
 ];
 
-const NEEDS_TARGET = new Set<ConstraintType>(['COPY_LOCATION', 'COPY_ROTATION', 'COPY_SCALE', 'TRACK_TO', 'DAMPED_TRACK', 'CHILD_OF']);
+const NEEDS_TARGET = new Set<ConstraintType>(['COPY_LOCATION', 'COPY_ROTATION', 'COPY_SCALE', 'TRACK_TO', 'DAMPED_TRACK', 'CHILD_OF', 'FOLLOW_PATH', 'CLAMP_TO']);
 
 const TRACK_AXES = [
   { id: 'TRACK_X', label: 'X' }, { id: 'TRACK_Y', label: 'Y' }, { id: 'TRACK_Z', label: 'Z' },
@@ -192,6 +194,47 @@ function constraintBox(l: Layout, ctx: PropsCtx, i: number): void {
       }, { tip: 'Clear inverse correction for ChildOf constraint' });
       break;
     }
+    case 'FOLLOW_PATH': {
+      target(body, C, true);
+      const sp = body.split(0.5);
+      const c1 = sp.column();
+      c1.prop(cbool(C, 'useCurveFollow', 'Follow Curve', 'Object will follow the heading and banking of the curve'));
+      c1.prop(cbool(C, 'useCurveRadius', 'Curve Radius', 'Object is scaled by the curve radius'));
+      const c2 = sp.column();
+      c2.prop(cbool(C, 'useFixedLocation', 'Fixed Position', 'Object will stay locked to a single point somewhere along the length of the curve regardless of time'));
+      const off = c2.column();
+      off.prop({ ...cfloat(C, 'offsetFactor', 'Offset', { min: 0, max: 1, precision: 3, step: 0.01, description: 'Percentage value defining target position along length of curve' }) }, { slider: true });
+      activeWhen(off, () => !!C()?.useFixedLocation);
+      const off2 = body.column();
+      off2.prop(cfloat(C, 'offset', 'Offset', { precision: 3, step: 1, description: 'Offset from the position corresponding to the time frame' }));
+      activeWhen(off2, () => !C()?.useFixedLocation);
+      const row = body.row();
+      row.label('Forward:', { fixed: true });
+      row.prop(eprop(C, 'forwardAxis', [
+        { id: 'FORWARD_X', label: 'X' }, { id: 'FORWARD_Y', label: 'Y' }, { id: 'FORWARD_Z', label: 'Z' },
+        { id: 'TRACK_NEGATIVE_X', label: '-X' }, { id: 'TRACK_NEGATIVE_Y', label: '-Y' }, { id: 'TRACK_NEGATIVE_Z', label: '-Z' },
+      ], { name: 'Forward Axis', description: 'Axis that points forward along the path', notify: ['scene'] }), { expand: true });
+      body.prop(eprop(C, 'upAxis', [{ id: 'UP_X', label: 'X' }, { id: 'UP_Y', label: 'Y' }, { id: 'UP_Z', label: 'Z' }], { name: 'Up', description: 'Axis that points upward', notify: ['scene'] }));
+      body.button('Animate Path', () => {
+        const c = C();
+        const t = c?.target ? app.doc.objects[c.target] : null;
+        const cu = t?.data ? app.doc.curves?.[t.data] : null;
+        if (!cu) return;
+        (cu as PathAnimCurve).pathAnimStart = app.scene.frameStart;
+        cu.usePath = true;
+        commitEdit('Animate Path', 'scene');
+      }, { icon: 'ANIM_DATA', tip: "Add default animation for path used by constraint if it isn't animated already", disabled: () => !C()?.target });
+      break;
+    }
+    case 'CLAMP_TO': {
+      target(body, C, true);
+      const row = body.row();
+      row.label('Main Axis:', { fixed: true });
+      row.prop(eprop(C, 'mainAxis', [{ id: 'CLAMPTO_AUTO', label: 'Auto' }, { id: 'CLAMPTO_X', label: 'X' }, { id: 'CLAMPTO_Y', label: 'Y' }, { id: 'CLAMPTO_Z', label: 'Z' }], { name: 'Main Axis', description: 'Main axis of movement', notify: ['scene'] }), { expand: true });
+      body.prop(cbool(C, 'useCyclic', 'Cyclic', 'Treat curve as cyclic curve (no clamping to curve bounding box)'));
+      space(body, false);
+      break;
+    }
   }
   // influence
   const ir = body.row(true);
@@ -209,10 +252,10 @@ function cfloat(C: () => Constraint | null, key: string, name: string, o: Partia
   return { kind: 'float', name, notify: ['scene'], get: () => Number(C()?.[key] ?? 0), set: (v) => { const c = C(); if (c) c[key] = v; }, ...o };
 }
 
-function target(l: Layout, C: () => Constraint | null): void {
+function target(l: Layout, C: () => Constraint | null, curvesOnly = false): void {
   l.prop({
-    kind: 'enum', name: 'Target', notify: ['scene'], undo: 'Change Target', description: 'Target Object',
-    items: () => objectItems((o) => o.id !== ob()?.id),
+    kind: 'enum', name: 'Target', notify: ['scene'], undo: 'Change Target', description: curvesOnly ? 'Target Curve object' : 'Target Object',
+    items: () => objectItems((o) => o.id !== ob()?.id && (!curvesOnly || o.type === 'CURVE')),
     get: () => C()?.target ?? '',
     set: (v) => { const c = C(); if (c) c.target = v || null; },
   }, { icon: 'OBJECT_DATA' });

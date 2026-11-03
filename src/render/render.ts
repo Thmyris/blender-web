@@ -26,6 +26,66 @@ function setProgress(s: string | null): void {
   for (const l of renderListeners) l();
 }
 
+/** Context handed to an add-on render engine (Cycles) for one frame. */
+export interface EngineRenderContext {
+  width: number;
+  height: number;
+  animation: boolean;
+  /** Header text while rendering (null clears it). */
+  progress(text: string | null): void;
+  /** Show an intermediate result in the Image Editor. */
+  update(canvas: HTMLCanvasElement): void;
+  /** Esc was pressed. */
+  cancelled(): boolean;
+}
+
+/** A render engine other than Blender Render: renders the current frame (progressively, asynchronously). */
+export interface EngineRenderer {
+  render(ctx: EngineRenderContext): Promise<HTMLCanvasElement | null>;
+}
+
+/** Render engines by `scene.render.engine` id (registered by src/render/cycles). */
+export const renderEngines: Partial<Record<string, EngineRenderer>> = {};
+
+function engineContext(t0: number, frame: number, animation: boolean): EngineRenderContext {
+  const { w, h } = renderSize();
+  return {
+    width: w, height: h, animation,
+    progress: (s) => setProgress(s),
+    cancelled: () => cancelRequested,
+    update: (c) => {
+      renderResult = { canvas: c, width: c.width, height: c.height, frame, time: performance.now() - t0, label: 'Render Result' };
+      for (const l of renderListeners) l();
+    },
+  };
+}
+
+async function renderStillEngine(engine: EngineRenderer): Promise<boolean> {
+  cancelRequested = false;
+  const t0 = performance.now();
+  const frame = app.scene.frameCurrent;
+  showResult();
+  const ectx = engineContext(t0, frame, false);
+  const canvas = frameHook ? await frameHook(() => engine.render(ectx), 'RENDERED', false) : await engine.render(ectx);
+  setProgress(null);
+  if (!canvas) { app.notify('render'); return false; }
+  const time = performance.now() - t0;
+  renderResult = { canvas, width: canvas.width, height: canvas.height, frame, time, label: 'Render Result' };
+  app.report('INFO', cancelRequested ? 'Render cancelled' : `Rendered frame ${frame} in ${(time / 1000).toFixed(2)} s`);
+  for (const l of renderListeners) l();
+  app.notify('render');
+  return true;
+}
+
+/**
+ * Post-processing of every rendered frame (compositing nodes, video sequencer; see src/editors/ext_init.ts).
+ * `renderScene` renders the active scene's camera view; the hook may call it (several times, e.g. for
+ * sequencer scene strips) or not at all, and returns the final frame.
+ */
+export type FrameHook = (renderScene: () => Promise<HTMLCanvasElement | null>, shading: Shading, animation: boolean) => Promise<HTMLCanvasElement | null>;
+let frameHook: FrameHook | null = null;
+export function setFrameHook(hook: FrameHook | null): void { frameHook = hook; }
+
 let offscreen: { canvas: HTMLCanvasElement; view: ViewState; r: ViewportRenderer } | null = null;
 
 function getOffscreen(): { canvas: HTMLCanvasElement; view: ViewState; r: ViewportRenderer } {
@@ -113,10 +173,12 @@ function showResult(): void {
 }
 
 export async function renderStill(shading: Shading = 'RENDERED'): Promise<boolean> {
+  const engine = shading === 'RENDERED' ? renderEngines[app.scene.render.engine] : undefined;
+  if (engine) return renderStillEngine(engine);
   setProgress('Rendering...');
   await new Promise((r) => setTimeout(r, 20));
   const t0 = performance.now();
-  const canvas = renderFrame(shading);
+  const canvas = frameHook ? await frameHook(async () => renderFrame(shading), shading, false) : renderFrame(shading);
   setProgress(null);
   if (!canvas) return false;
   const time = performance.now() - t0;
@@ -148,6 +210,9 @@ export async function renderAnimation(shading: Shading = 'RENDERED'): Promise<bo
   }
   const track = stream?.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
   const origFrame = sc.frameCurrent;
+  const engine = shading === 'RENDERED' ? renderEngines[sc.render.engine] : undefined;
+  // slow (progressive) engines: record only while a finished frame is shown, so the video keeps its frame rate
+  if (engine && recorder) recorder.pause();
   cancelRequested = false;
   const t0 = performance.now();
   let last: HTMLCanvasElement | null = null;
@@ -158,17 +223,22 @@ export async function renderAnimation(shading: Shading = 'RENDERED'): Promise<bo
     app.flush();
     setProgress(`Rendering frame ${f} / ${end}  (Esc to cancel)`);
     const frameStart = performance.now();
-    const c = renderFrame(shading);
+    const produce = async () => (engine ? engine.render(engineContext(t0, f, true)) : renderFrame(shading));
+    const c = frameHook ? await frameHook(produce, shading, true) : await produce();
     if (!c) { setProgress(null); return false; }
+    if (engine && cancelRequested) break;
     last = c;
     rctx.drawImage(c, 0, 0);
+    if (engine && recorder) recorder.resume();
     track?.requestFrame?.();
     renderResult = { canvas: c, width: w, height: h, frame: f, time: performance.now() - t0, label: 'Render Result' };
     for (const l of renderListeners) l();
     // keep real-time pacing so the recording has the right frame rate
-    const wait = Math.max(0, 1000 / fps - (performance.now() - frameStart));
+    const wait = engine ? 1000 / fps : Math.max(0, 1000 / fps - (performance.now() - frameStart));
     await new Promise((r) => setTimeout(r, wait));
+    if (engine && recorder) recorder.pause();
   }
+  if (engine && recorder?.state === 'paused') recorder.resume();
   let video: Blob | undefined;
   if (recorder) {
     await new Promise<void>((resolve) => { recorder!.onstop = () => resolve(); recorder!.stop(); });

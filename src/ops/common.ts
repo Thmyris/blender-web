@@ -40,3 +40,18 @@ export function activeLayer(): number {
   const i = app.scene.layers.findIndex(Boolean);
   return i < 0 ? 0 : i;
 }
+
+/**
+ * Extra Ctrl+P "Set Parent To" types registered by other modules (Armature Deform, Bone, Lattice
+ * Deform, Curve Deform, ...). `object.parent_set(type=...)` runs `exec` for these types and the Ctrl+P
+ * menu lists the items whose `poll` passes (active object = parent).
+ */
+export interface ParentType {
+  id: string;
+  label: string;
+  /** Submenu entries (label + extra operator props), e.g. Armature Deform > With Automatic Weights. */
+  sub?: { label: string; props: Record<string, unknown> }[];
+  poll: () => boolean;
+  exec: (props: Record<string, unknown>) => 'FINISHED' | 'CANCELLED';
+}
+export const PARENT_TYPES: ParentType[] = [];

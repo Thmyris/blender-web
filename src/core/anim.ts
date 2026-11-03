@@ -21,9 +21,32 @@ const FIELD: Record<string, keyof BObject> = {
   hide: 'hide', hide_render: 'hideRender',
 };
 
+/**
+ * Resolvers for property paths that are not plain object fields (e.g. pose bones:
+ * `pose.bones["Bone"].location`). `get` returns undefined when the path is not handled.
+ */
+export interface PropResolver {
+  get(ob: BObject, path: string, index: number): number | undefined;
+  set(ob: BObject, path: string, index: number, value: number): boolean;
+  /** Channel name for animation editors, e.g. "X Location (Bone)". */
+  label?(path: string, index: number): string | undefined;
+}
+export const propResolvers: PropResolver[] = [];
+
+/** Display name of an F-Curve channel. */
+export function channelLabel(path: string, index: number): string {
+  const info = ANIMATABLE[path];
+  if (info) return info.size ? `${'XYZW'[index]} ${info.label}` : info.label;
+  for (const r of propResolvers) { const l = r.label?.(path, index); if (l) return l; }
+  return path;
+}
+
 export function getPropValue(ob: BObject, path: string, index: number): number {
   const f = FIELD[path];
-  if (!f) return 0;
+  if (!f) {
+    for (const r of propResolvers) { const v = r.get(ob, path, index); if (v !== undefined) return v; }
+    return 0;
+  }
   const v = ob[f] as unknown;
   if (Array.isArray(v)) return Number(v[index] ?? 0);
   return typeof v === 'boolean' ? (v ? 1 : 0) : Number(v);
@@ -31,7 +54,7 @@ export function getPropValue(ob: BObject, path: string, index: number): number {
 
 export function setPropValue(ob: BObject, path: string, index: number, value: number): void {
   const f = FIELD[path];
-  if (!f) return;
+  if (!f) { for (const r of propResolvers) if (r.set(ob, path, index, value)) return; return; }
   const cur = ob[f] as unknown;
   if (Array.isArray(cur)) (cur as number[])[index] = value;
   else if (typeof cur === 'boolean') (ob as unknown as Record<string, unknown>)[f] = value >= 0.5;

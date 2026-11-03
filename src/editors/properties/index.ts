@@ -22,13 +22,16 @@ import { objectPanels } from './object';
 import { constraintPanels } from './constraints';
 import { modifierPanels } from './modifiers';
 import { dataPanels } from './data';
+import { activeBone, bonePanels, boneConstraintPanels } from './rig_panels';
+import { hasMaterialSlots } from '../../core/matslots';
 import { materialPanels } from './material';
 import { texturePanels } from './texture';
 import { particlePanels, physicsPanels } from './physics';
+import { cyclesPanels } from './cycles';
 
 export type ContextId =
   | 'RENDER' | 'RENDER_LAYER' | 'SCENE' | 'WORLD' | 'OBJECT' | 'CONSTRAINT' | 'MODIFIER' | 'DATA'
-  | 'MATERIAL' | 'TEXTURE' | 'PARTICLES' | 'PHYSICS';
+  | 'BONE' | 'BONE_CONSTRAINT' | 'MATERIAL' | 'TEXTURE' | 'PARTICLES' | 'PHYSICS';
 
 interface ContextDef {
   id: ContextId;
@@ -42,18 +45,22 @@ interface ContextDef {
 const always = () => true;
 const hasOb = (o: BObject | null) => !!o;
 const isMesh = (o: BObject | null) => o?.type === 'MESH';
+/** Types with a modifier stack (meshes, curves, surfaces and text, like 2.79). */
+const hasModifiers = (o: BObject | null) => !!o && ['MESH', 'CURVE', 'SURFACE', 'FONT'].includes(o.type);
 
 /** Contexts in Blender 2.79's order. */
 const CONTEXTS: ContextDef[] = [
-  { id: 'RENDER', label: 'Render', description: 'Render', icon: () => 'SCENE', poll: always, panels: renderPanels },
-  { id: 'RENDER_LAYER', label: 'Render Layers', description: 'Render layer', icon: () => 'RENDERLAYERS', poll: always, panels: renderLayerPanels },
+  { id: 'RENDER', label: 'Render', description: 'Render', icon: () => 'SCENE', poll: always, panels: cyclesPanels('RENDER', renderPanels) },
+  { id: 'RENDER_LAYER', label: 'Render Layers', description: 'Render layer', icon: () => 'RENDERLAYERS', poll: always, panels: cyclesPanels('RENDER_LAYER', renderLayerPanels) },
   { id: 'SCENE', label: 'Scene', description: 'Scene', icon: () => 'SCENE_DATA', poll: always, panels: scenePanels },
-  { id: 'WORLD', label: 'World', description: 'World', icon: () => 'WORLD', poll: always, panels: worldPanels },
+  { id: 'WORLD', label: 'World', description: 'World', icon: () => 'WORLD', poll: always, panels: cyclesPanels('WORLD', worldPanels) },
   { id: 'OBJECT', label: 'Object', description: 'Object', icon: () => 'OBJECT_DATA', poll: hasOb, panels: objectPanels },
   { id: 'CONSTRAINT', label: 'Constraints', description: 'Object constraints', icon: () => 'CONSTRAINT', poll: hasOb, panels: constraintPanels },
-  { id: 'MODIFIER', label: 'Modifiers', description: 'Modifiers', icon: () => 'MODIFIER', poll: isMesh, panels: modifierPanels },
-  { id: 'DATA', label: 'Data', description: 'Object data', icon: (o) => objectDataIcon(o?.type ?? 'MESH'), poll: hasOb, panels: dataPanels },
-  { id: 'MATERIAL', label: 'Material', description: 'Material', icon: () => 'MATERIAL', poll: isMesh, panels: materialPanels },
+  { id: 'MODIFIER', label: 'Modifiers', description: 'Modifiers', icon: () => 'MODIFIER', poll: hasModifiers, panels: modifierPanels },
+  { id: 'DATA', label: 'Data', description: 'Object data', icon: (o) => objectDataIcon(o?.type ?? 'MESH'), poll: hasOb, panels: cyclesPanels('DATA', dataPanels) },
+  { id: 'BONE', label: 'Bone', description: 'Bone', icon: () => 'BONE_DATA', poll: (o) => o?.type === 'ARMATURE' && !!activeBone(), panels: bonePanels },
+  { id: 'BONE_CONSTRAINT', label: 'Bone Constraints', description: 'Bone constraints', icon: () => 'CONSTRAINT_BONE', poll: (o) => o?.type === 'ARMATURE' && !!activeBone() && !(app.mode === 'EDIT' && app.editObject === o.id), panels: boneConstraintPanels },
+  { id: 'MATERIAL', label: 'Material', description: 'Material', icon: () => 'MATERIAL', poll: hasMaterialSlots, panels: cyclesPanels('MATERIAL', materialPanels) },
   { id: 'TEXTURE', label: 'Texture', description: 'Texture', icon: () => 'TEXTURE', poll: always, panels: texturePanels },
   { id: 'PARTICLES', label: 'Particles', description: 'Particle', icon: () => 'PARTICLES', poll: isMesh, panels: particlePanels },
   { id: 'PHYSICS', label: 'Physics', description: 'Physics', icon: () => 'PHYSICS', poll: hasOb, panels: physicsPanels },
@@ -178,9 +185,11 @@ export class PropertiesEditor extends Editor {
       default: {
         if (!o) break;
         parts.push(['OBJECT_DATA', o.name]);
-        if (c === 'DATA') {
-          const d = meshData() ?? cameraData() ?? lampData();
+        if (c === 'DATA' || c === 'BONE' || c === 'BONE_CONSTRAINT') {
+          const d = meshData() ?? cameraData() ?? lampData() ?? (o.data ? app.doc.armatures?.[o.data] ?? app.doc.lattices?.[o.data] : null);
           if (d) parts.push([objectDataIcon(o.type), d.name]);
+          const b = c !== 'DATA' ? activeBone() : null;
+          if (b) parts.push(['BONE_DATA', b.name]);
         } else if (c === 'MATERIAL') {
           const ma = activeMaterial();
           if (ma) parts.push(['MATERIAL', ma.name]);

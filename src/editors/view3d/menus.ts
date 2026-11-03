@@ -1,8 +1,14 @@
 // 3D View header menus and hotkey popup menus, following Blender 2.79's layout.
 
 import { app } from '../../app';
+import { curveAddItems, surfaceAddItems } from '../../ops/curve';
+import { convertMenu } from '../../ops/curveconvert';
+import { metaballAddItems } from './mballedit';
+import { FIELD_TYPES } from '../../sim/ops';
 import type { MenuItem } from '../../ui/menu';
+import { PARENT_TYPES } from '../../ops/common';
 import type { View3D } from './view3d';
+import { activeEditType } from './edittypes';
 
 const op = (label: string, id: string, props?: Record<string, unknown>, icon?: string): MenuItem => ({ label, op: id, props, icon });
 const sep: MenuItem = { type: 'separator' };
@@ -81,6 +87,8 @@ export function viewMenu(view: View3D): MenuItem[] {
 }
 
 export function selectMenu(): MenuItem[] {
+  const et = activeEditType();
+  if (et?.handler.selectMenu) return et.handler.selectMenu();
   if (app.mode === 'EDIT') {
     return [
       op('Border Select', 'view3d.select_border'),
@@ -156,16 +164,18 @@ export function meshAddItems(): MenuItem[] {
 const na = (label: string, icon: string): MenuItem => ({ label, icon, disabled: true, description: 'Not available in blender-web' });
 
 export function addMenu(): MenuItem[] {
+  const et = activeEditType();
+  if (et?.handler.addMenu) return et.handler.addMenu();
   if (app.mode === 'EDIT') return meshAddItems();
   return [
     sub('Mesh', meshAddItems(), 'OUTLINER_OB_MESH'),
-    sub('Curve', [na('Bezier', 'CURVE_BEZCURVE'), na('Circle', 'CURVE_BEZCIRCLE'), na('Path', 'CURVE_PATH')], 'OUTLINER_OB_CURVE'),
-    sub('Surface', [na('NURBS Surface', 'SURFACE_DATA')], 'OUTLINER_OB_SURFACE'),
-    sub('Metaball', [na('Ball', 'META_DATA')], 'OUTLINER_OB_META'),
+    sub('Curve', curveAddItems(), 'OUTLINER_OB_CURVE'),
+    sub('Surface', surfaceAddItems(), 'OUTLINER_OB_SURFACE'),
+    sub('Metaball', metaballAddItems(), 'OUTLINER_OB_META'),
     op('Text', 'object.text_add', {}, 'OUTLINER_OB_FONT'),
     sep,
-    sub('Armature', [na('Single Bone', 'ARMATURE_DATA')], 'OUTLINER_OB_ARMATURE'),
-    na('Lattice', 'OUTLINER_OB_LATTICE'),
+    sub('Armature', [op('Single Bone', 'object.armature_add', {}, 'BONE_DATA')], 'OUTLINER_OB_ARMATURE'),
+    op('Lattice', 'object.add', { type: 'LATTICE' }, 'OUTLINER_OB_LATTICE'),
     sub('Empty', [
       op('Plain Axes', 'object.empty_add', { type: 'PLAIN_AXES' }, 'OUTLINER_OB_EMPTY'),
       op('Arrows', 'object.empty_add', { type: 'ARROWS' }, 'OUTLINER_OB_EMPTY'),
@@ -187,7 +197,7 @@ export function addMenu(): MenuItem[] {
       op('Area', 'object.lamp_add', { type: 'AREA' }, 'LAMP_AREA'),
     ], 'OUTLINER_OB_LAMP'),
     sep,
-    sub('Force Field', [na('Force', 'FORCE_FORCE'), na('Wind', 'FORCE_WIND'), na('Vortex', 'FORCE_VORTEX')], 'OUTLINER_OB_FORCE_FIELD'),
+    sub('Force Field', FIELD_TYPES.map(([t, l, ic]) => op(l, 'object.effector_add', { type: t }, ic)), 'OUTLINER_OB_FORCE_FIELD'),
     sep,
     sub('Group Instance', [{ type: 'label', label: 'No groups' }], 'OUTLINER_OB_GROUP_INSTANCE'),
   ];
@@ -257,6 +267,9 @@ export function parentMenu(): MenuItem[] {
     op('Object', 'object.parent_set', { type: 'OBJECT', keep_transform: false }),
     op('Object (Keep Transform)', 'object.parent_set', { type: 'OBJECT', keep_transform: true }),
     op('Object (Without Inverse)', 'object.parent_no_inverse_set'),
+    ...PARENT_TYPES.filter((t) => t.poll()).map((t): MenuItem => (t.sub
+      ? sub(t.label, t.sub.map((x) => op(x.label, 'object.parent_set', { type: t.id, ...x.props })))
+      : op(t.label, 'object.parent_set', { type: t.id }))),
   ];
 }
 
@@ -357,7 +370,7 @@ export function objectMenu(): MenuItem[] {
       op('Hide Unselected', 'object.hide_view_set', { unselected: true }),
     ]),
     sep,
-    sub('Convert to', [op('Mesh from Curve/Meta/Surf/Text', 'object.convert', { target: 'MESH' })]),
+    sub('Convert to', convertMenu()),
     op('Move to Layer...', 'object.move_to_layer'),
     sep,
     op('Shade Smooth', 'object.shade_smooth'),
@@ -460,6 +473,10 @@ export function verticesMenu(): MenuItem[] {
     op('Randomize Vertices', 'transform.vertex_random'),
     sep,
     op('Make Edge/Face', 'mesh.edge_face_add'),
+    op('Connect Vertex Path', 'mesh.vert_connect_path'),
+    sep,
+    op('Symmetrize', 'mesh.symmetrize'),
+    op('Snap to Symmetry', 'mesh.symmetry_snap'),
   ];
 }
 
@@ -467,10 +484,21 @@ export function edgesMenu(): MenuItem[] {
   return [
     op('Make Edge/Face', 'mesh.edge_face_add'),
     op('Subdivide', 'mesh.subdivide'),
+    op('Un-Subdivide', 'mesh.unsubdivide'),
+    sep,
+    op('Rotate Edge CW', 'mesh.edge_rotate', { use_ccw: false }),
+    op('Rotate Edge CCW', 'mesh.edge_rotate', { use_ccw: true }),
+    sep,
+    op('Bevel', 'mesh.bevel', { vertex_only: false }),
+    op('Edge Split', 'mesh.edge_split'),
+    op('Bridge Edge Loops', 'mesh.bridge_edge_loops'),
     sep,
     op('Loop Cut and Slide', 'mesh.loopcut_slide'),
     sep,
     op('Spin', 'mesh.spin'),
+    sep,
+    op('Mark Seam', 'mesh.mark_seam', { clear: false }),
+    op('Clear Seam', 'mesh.mark_seam', { clear: true }),
     sep,
     op('Select Sharp Edges', 'mesh.edges_select_sharp'),
   ];
@@ -478,7 +506,9 @@ export function edgesMenu(): MenuItem[] {
 
 export function facesMenu(): MenuItem[] {
   return [
-    op('Fill', 'mesh.edge_face_add'),
+    op('Fill', 'mesh.fill'),
+    op('Grid Fill', 'mesh.fill_grid'),
+    op('Beautify Faces', 'mesh.beautify_fill'),
     op('Inset Faces', 'mesh.inset'),
     op('Dissolve Faces', 'mesh.dissolve_faces'),
     sep,
