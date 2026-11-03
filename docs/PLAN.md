@@ -33,15 +33,19 @@ This file tracked the work on the request "add all of the missing features u can
    - Node editor compositing;
    - F12 render with Blender Render and with Cycles.
 4. [x] Update `README.md`.
-5. [ ] **Squash-merge** `wip/missing-features` into `main` as one commit, push, then delete the WIP branch.
-   - Before merging, scan for links, emails and secrets.
-6. [ ] Rebuild and republish the private web preview of the app. The link is shared only in chat, never in the repo.
-7. [ ] Remove Playwright from the cloud container (user request because of CVEs):
-   - uninstall the global `playwright` / `playwright-core` packages;
-   - delete the `/opt/pw-browsers` browsers;
-   - verify that nothing remains.
-8. [ ] Run `npm audit` on the project's dependencies.
-9. [ ] Final summary for the user.
+5. [x] Squash-merged into `main` as one commit (`e8d2ffd`) and pushed; the merge diff was scanned and contained no links, emails or secrets.
+   - Deleting the `wip/missing-features` branch on GitHub was refused by the cloud environment's GitHub proxy (branch deletion is not permitted from these sessions).
+   - The local copy was deleted. The remote branch has to be deleted by the owner on GitHub. It no longer contains the preview link.
+6. [x] Rebuilt and republished the web preview at the same link (shared only in chat).
+   - Note: its sharing setting is "Anyone with the link"; the owner can change it in the page's Share menu.
+7. [x] Removed Playwright from this cloud container:
+   - global link and `/opt/node-tools` packages (`playwright`, `playwright-core`) uninstalled;
+   - `/opt/pw-browsers` (Chromium builds and ffmpeg) deleted;
+   - verified that no command, module, folder or process remains.
+   - Playwright was never a project dependency.
+   - A new cloud session starts from a fresh image, which has Playwright again unless the environment's setup script removes it.
+8. [x] `npm audit`: 0 vulnerabilities (three, cannon-es, vite, typescript).
+9. [x] Final summary given to the user in chat.
 
 ## Not finished by the work streams
 
@@ -56,6 +60,6 @@ Listed in `README.md` under "What is not implemented":
 ## Privacy
 
 - The GitHub repo is public.
-- The private preview link was briefly committed to the WIP branch. That history was rewritten (force-push, approved by the user), so no branch contains it.
+- The preview link was briefly committed to the WIP branch. That history was rewritten (force-push, approved by the user), so no branch contains it.
 - Full-history scans found no tokens, keys, private keys or email addresses.
 - Rule: no preview links, emails or secrets go into the repo.
