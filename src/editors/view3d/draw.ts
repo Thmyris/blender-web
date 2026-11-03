@@ -9,7 +9,7 @@ import {
   ShaderMaterial, SphereGeometry, SpotLight, Vector3, WebGLRenderer, WebGLRenderTarget, Fog, PCFSoftShadowMap,
   type Intersection, type Camera, NoBlending, SRGBColorSpace, PointsMaterial, CanvasTexture,
 } from 'three';
-import { particlePositions } from '../../core/particles';
+import { syncSimDrawing } from '../../sim/draw';
 import { app } from '../../app';
 import type { BObject, LampData, MaterialData, MeshData, Vec3 } from '../../core/types';
 import { type EvalMesh, evalEdges } from '../../core/modifiers';
@@ -425,7 +425,6 @@ export class ViewportRenderer {
   private relLineMat = new LineDashedMaterial({ color: 0x000000, dashSize: 0.1, gapSize: 0.1 });
   private extraLines = new Group();
   private particleGroup = new Group();
-  private particleSprite: CanvasTexture | null = null;
   pixelRatio = 1;
   /** Render with a transparent background (Render > Alpha: Transparent). */
   transparentBackground = false;
@@ -735,41 +734,14 @@ export class ViewportRenderer {
 
   /** Particle systems: recomputed for the current frame on every sync. */
   private syncParticles(localView: Set<string> | null): void {
-    for (const c of [...this.particleGroup.children]) { this.particleGroup.remove(c); (c as Points).geometry.dispose(); ((c as Points).material as Material).dispose(); }
-    const sc = app.scene;
-    const rendered = this.display.shading === 'RENDERED' || this.display.showOnlyRender;
-    const g = sc.useGravity ? sc.gravity : [0, 0, 0] as Vec3;
-    for (const ob of app.objects()) {
-      if (!ob.particleSystems?.length || ob.type !== 'MESH' || !this.isVisible(ob, localView)) continue;
-      const em = app.evalMesh(ob);
-      if (!em) continue;
-      const world = app.matrices.world(ob);
-      for (const ps of ob.particleSystems) {
-        if (this.display.showOnlyRender ? !ps.showRender : !ps.showViewport) continue;
-        const frac = this.display.showOnlyRender ? 1 : ps.displayPercentage / 100;
-        const pos = particlePositions(ob, ps, em, world, sc.frameCurrent, sc.fps / (sc.fpsBase || 1), g, frac);
-        if (!pos.length) continue;
-        const geom = new BufferGeometry();
-        geom.setAttribute('position', new BufferAttribute(pos, 3));
-        geom.computeBoundingSphere();
-        let mat: PointsMaterial;
-        if (rendered) {
-          if (!this.particleSprite) {
-            const cv = document.createElement('canvas');
-            cv.width = cv.height = 64;
-            const cx = cv.getContext('2d')!;
-            const gr = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-            cx.fillStyle = gr; cx.fillRect(0, 0, 64, 64);
-            this.particleSprite = new CanvasTexture(cv);
-          }
-          mat = new PointsMaterial({ size: ps.size * 4, sizeAttenuation: true, map: this.particleSprite, transparent: true, depthWrite: false, color: 0xffffff });
-        } else {
-          mat = new PointsMaterial({ size: 3 * this.pixelRatio, sizeAttenuation: false, color: ob.select ? 0xffa040 : 0x111111 });
-        }
-        this.particleGroup.add(new Points(geom, mat));
-      }
-    }
+    // emitter and hair particles, and force field shapes (src/sim/draw.ts)
+    syncSimDrawing(this.particleGroup, {
+      isVisible: (ob) => this.isVisible(ob, localView),
+      shading: this.display.shading,
+      showOnlyRender: this.display.showOnlyRender,
+      camera: this.view.camera(),
+      pixelRatio: this.pixelRatio,
+    });
   }
 
   private lampKey = '';
